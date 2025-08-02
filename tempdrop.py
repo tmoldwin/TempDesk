@@ -40,7 +40,7 @@ class ResizableFramelessWindow(QMainWindow):
         self.drag_position = None
         self.resizing = False
         self.resize_edge = None
-        self.resize_margin = 12
+        self.resize_margin = 8
         # This will be set by the child class
         self.title_bar = None
 
@@ -62,24 +62,11 @@ class ResizableFramelessWindow(QMainWindow):
             self.resize_window(event.globalPosition().toPoint())
         elif self.drag_position:
             self.move(event.globalPosition().toPoint() - self.drag_position)
-        else:
-            self.update_cursor(pos)
         super().mouseMoveEvent(event)
-        
-    def enterEvent(self, event):
-        """Handle mouse enter to update cursor."""
-        self.update_cursor(event.position().toPoint())
-        super().enterEvent(event)
-        
-    def leaveEvent(self, event):
-        """Handle mouse leave to reset cursor."""
-        self.unsetCursor()
-        super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         self.drag_position = None
         self.resizing = False
-        self.unsetCursor()
         super().mouseReleaseEvent(event)
 
     def is_on_edge(self, pos: QPoint) -> bool:
@@ -93,18 +80,7 @@ class ResizableFramelessWindow(QMainWindow):
             pos.y() > self.height() - self.resize_margin
         )
 
-    def update_cursor(self, pos: QPoint):
-        left, top, right, bottom = self.get_edge(pos)
-        if (left and top) or (right and bottom):
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif (right and top) or (left and bottom):
-            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-        elif left or right:
-            self.setCursor(Qt.CursorShape.SizeHorCursor)
-        elif top or bottom:
-            self.setCursor(Qt.CursorShape.SizeVerCursor)
-        else:
-            self.unsetCursor()
+
 
     def resize_window(self, global_pos: QPoint):
         rect = self.geometry()
@@ -671,7 +647,7 @@ class DesktopWidget(ResizableFramelessWindow):
 
     def update_stylesheet(self):
         border_color = "#0078D7" if self.is_dragging else "#888"
-        self.view.setStyleSheet(f"QListView#fileView {{ background-color: rgba(240, 240, 240, 0.85); border-radius: 0px 0px 8px 8px; border: 2px dashed {border_color}; padding: 10px; }}")
+        self.view.setStyleSheet(f"QListView#fileView {{ background-color: rgba(240, 240, 240, 0.85); border-radius: 0px 0px 8px 8px; border: 2px solid {border_color}; padding: 10px; }}")
 
     def view_drag_enter_event(self, event):
         if event.mimeData().hasUrls():
