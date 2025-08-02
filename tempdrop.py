@@ -280,6 +280,11 @@ class DesktopWidget(ResizableFramelessWindow):
         self.cleanup_timer.timeout.connect(self.auto_cleanup)
         self.cleanup_timer.start(60000)  # Check every minute
         
+        # Setup periodic refresh timer to ensure view stays updated
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.periodic_refresh)
+        self.refresh_timer.start(60000)  # Refresh every minute
+        
         # Apply initial filter after setup
         self.apply_file_filter()
     
@@ -327,6 +332,20 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath(""); self.model.setRootPath(self.tempdrop_folder)
         self.view.setRootIndex(self.model.index(self.tempdrop_folder))
         print(f"[DIRECTORY] Directory changed, refreshed view")
+    
+    def periodic_refresh(self):
+        """Periodic refresh to ensure view stays accurate."""
+        print("🔄 PERIODIC REFRESH: Updating view and reapplying filter")
+        
+        # Force refresh the file system model
+        self.model.setRootPath("")
+        self.model.setRootPath(self.tempdrop_folder)
+        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        
+        # Reapply the filter to make sure everything is correct
+        self.apply_file_filter()
+        
+        print("✅ PERIODIC REFRESH: Complete")
         
     def apply_file_filter(self):
         """Apply file filter by temporarily hiding old files from the folder."""
@@ -357,8 +376,11 @@ class DesktopWidget(ResizableFramelessWindow):
                 hidden_path = os.path.join(hidden_folder, file)
                 
                 if os.path.isfile(file_path):
+                    # Get file creation time in this folder (when it was added to TempDrop)
+                    # Note: os.path.getctime() returns when file was created in this location,
+                    # which is when it was dragged/copied/moved here
                     ctime = os.path.getctime(file_path)
-                    age = current_time - ctime
+                    age = current_time - ctime  # Age in seconds since added to TempDrop
                     should_show = age <= filter_period
                     
                     if should_show:
@@ -775,6 +797,13 @@ class DesktopWidget(ResizableFramelessWindow):
                 except:
                     # If anything fails, use regular move
                     shutil.move(source_path, target_path)
+                
+                # Log when file is added for debugging - this sets the creation time
+                import time
+                print(f"🗂️ FILE ADDED TO TEMPDROP via drag/drop:")
+                print(f"   File: {filename}")
+                print(f"   Time: {time.time()}")
+                print(f"   Path: {target_path}")
                     
             except Exception as e:
                 QMessageBox.warning(self, "Move Error", f"Could not move file:\n{e}")
