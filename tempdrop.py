@@ -478,6 +478,20 @@ class DesktopWidget(ResizableFramelessWindow):
                     if os.path.isfile(path): os.remove(path)
                     elif os.path.isdir(path): shutil.rmtree(path)
                 except Exception as e: QMessageBox.warning(self, "Error", f"Could not delete '{path}':\n{e}")
+            
+            # Notify Windows that files were deleted
+            try:
+                import ctypes
+                SHCNE_DELETE = 0x00000002
+                SHCNF_PATH = 0x0001
+                for path in paths:
+                    ctypes.windll.shell32.SHChangeNotifyW(SHCNE_DELETE, SHCNF_PATH, path, None)
+            except:
+                pass  # If Windows API call fails, continue anyway
+            
+            # Refresh the file system model to show changes immediately
+            self.model.setRootPath("")
+            self.model.setRootPath(self.tempdrop_folder)
 
     def show_in_explorer(self):
         subprocess.Popen(f'explorer "{self.tempdrop_folder}"')
@@ -693,9 +707,81 @@ class DesktopWidget(ResizableFramelessWindow):
                     target_path = os.path.join(self.tempdrop_folder, new_filename)
                     counter += 1
                 
-                shutil.move(source_path, target_path)
+                # Use native Windows cut/paste operation
+                try:
+                    import ctypes
+                    from ctypes import wintypes
+                    
+                    # Open clipboard
+                    user32 = ctypes.windll.user32
+                    kernel32 = ctypes.windll.kernel32
+                    
+                    if user32.OpenClipboard(None):
+                        try:
+                            # Clear clipboard
+                            user32.EmptyClipboard()
+                            
+                            # Create DROPFILES structure for the file
+                            # DROPFILES structure + file path + double null terminator
+                            file_path_w = source_path + '\0\0'  # Double null terminated
+                            file_path_bytes = file_path_w.encode('utf-16le')
+                            
+                            # DROPFILES structure: 20 bytes + file paths
+                            dropfiles_size = 20 + len(file_path_bytes)
+                            
+                            # Allocate global memory
+                            hglobal = kernel32.GlobalAlloc(0x2000, dropfiles_size)  # GMEM_MOVEABLE
+                            if hglobal:
+                                ptr = kernel32.GlobalLock(hglobal)
+                                if ptr:
+                                    # Fill DROPFILES structure
+                                    ctypes.memmove(ptr, ctypes.c_uint32(20), 4)  # pFiles offset
+                                    ctypes.memmove(ptr + 4, ctypes.c_uint32(0), 4)  # pt.x
+                                    ctypes.memmove(ptr + 8, ctypes.c_uint32(0), 4)  # pt.y  
+                                    ctypes.memmove(ptr + 12, ctypes.c_uint32(0), 4)  # fNC
+                                    ctypes.memmove(ptr + 16, ctypes.c_uint32(1), 4)  # fWide (Unicode)
+                                    
+                                    # Copy file path
+                                    ctypes.memmove(ptr + 20, file_path_bytes, len(file_path_bytes))
+                                    
+                                    kernel32.GlobalUnlock(hglobal)
+                                    
+                                    # Set clipboard data
+                                    CF_HDROP = 15
+                                    user32.SetClipboardData(CF_HDROP, hglobal)
+                                    
+                                    # Set "Preferred DropEffect" to MOVE (cut)
+                                    dropeffect_format = user32.RegisterClipboardFormatW("Preferred DropEffect")
+                                    if dropeffect_format:
+                                        effect_data = ctypes.c_uint32(2)  # DROPEFFECT_MOVE
+                                        hglobal_effect = kernel32.GlobalAlloc(0x2000, 4)
+                                        if hglobal_effect:
+                                            ptr_effect = kernel32.GlobalLock(hglobal_effect)
+                                            if ptr_effect:
+                                                ctypes.memmove(ptr_effect, ctypes.byref(effect_data), 4)
+                                                kernel32.GlobalUnlock(hglobal_effect)
+                                                user32.SetClipboardData(dropeffect_format, hglobal_effect)
+                                    
+                        finally:
+                            user32.CloseClipboard()
+                        
+                        # Now do the actual move - this will be seen as a paste operation
+                        shutil.move(source_path, target_path)
+                        
+                    else:
+                        # Clipboard failed, use regular move
+                        shutil.move(source_path, target_path)
+                        
+                except:
+                    # If anything fails, use regular move
+                    shutil.move(source_path, target_path)
+                    
             except Exception as e:
                 QMessageBox.warning(self, "Move Error", f"Could not move file:\n{e}")
+        
+        # Refresh the file system model to show changes immediately
+        self.model.setRootPath("")
+        self.model.setRootPath(self.tempdrop_folder)
 
     def view_key_press_event(self, event: QKeyEvent):
         """Handle keyboard shortcuts for the view."""
@@ -787,8 +873,21 @@ class DesktopWidget(ResizableFramelessWindow):
                         # Check if this was a cut operation
                         if mime_data.hasFormat("application/x-qt-windows-mime;value=\"Preferred DropEffect\""):
                             shutil.move(source_path, target_path)
+                            
+                            # Notify Windows that the file was deleted from source location
+                            try:
+                                import ctypes
+                                SHCNE_DELETE = 0x00000002
+                                SHCNF_PATH = 0x0001
+                                ctypes.windll.shell32.SHChangeNotifyW(SHCNE_DELETE, SHCNF_PATH, source_path, None)
+                            except:
+                                pass  # If Windows API call fails, continue anyway
                         else:
                             shutil.copy2(source_path, target_path)
+                
+                # Refresh the file system model to show changes immediately
+                self.model.setRootPath("")
+                self.model.setRootPath(self.tempdrop_folder)
                             
         except Exception as e:
             QMessageBox.warning(self, "Paste Error", f"Could not paste items:\n{e}")
