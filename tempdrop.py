@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QFileIconProvider, QSystemTrayIcon, QStyle, QInputDialog
 )
 from PyQt6.QtCore import (
-    Qt, QSize, QPoint, QRect, QFileSystemWatcher
+    Qt, QSize, QPoint, QRect, QFileSystemWatcher, QSortFilterProxyModel, QTimer
 )
 from PyQt6.QtGui import (
     QFileSystemModel, QIcon, QAction, QMouseEvent, QKeyEvent, QKeySequence
@@ -137,15 +137,32 @@ class DesktopWidget(ResizableFramelessWindow):
     
     def load_config(self) -> dict:
         config_path = Path.home() / '.tempdrop_config.json'
+        default_config = {
+            'filter_period': 86400,  # 1 day in seconds
+            'auto_delete': False,
+            'window_geometry': None
+        }
+        
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f: return json.load(f)
-            except json.JSONDecodeError: return {}
-        return {}
+                with open(config_path, 'r') as f:
+                    loaded_config = json.load(f)
+                    # Merge with defaults to ensure all keys exist
+                    for key, value in default_config.items():
+                        if key not in loaded_config:
+                            loaded_config[key] = value
+                    return loaded_config
+            except json.JSONDecodeError:
+                return default_config
+        return default_config
     
     def save_config(self):
         config_path = Path.home() / '.tempdrop_config.json'
-        config = {'window_geometry': self.saveGeometry().data().hex()}
+        config = {
+            'window_geometry': self.saveGeometry().data().hex(),
+            'filter_period': self.config.get('filter_period', 86400),
+            'auto_delete': self.config.get('auto_delete', False)
+        }
         try:
             with open(config_path, 'w') as f: json.dump(config, f, indent=2)
         except Exception as e: print(f"Error saving config: {e}")
@@ -243,10 +260,25 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model = QFileSystemModel()
         self.model.setRootPath(self.tempdrop_folder)
         self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
-        self.view.setModel(self.model)
-        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        
+        # Create a proxy model for filtering
+        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model.setSourceModel(self.model)
+        self.proxy_model.setFilterKeyColumn(0)
+        
+        self.view.setModel(self.proxy_model)
+        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
+        
         self.watcher = QFileSystemWatcher([self.tempdrop_folder])
         self.watcher.directoryChanged.connect(self.directory_changed)
+        
+        # Setup auto-cleanup timer
+        self.cleanup_timer = QTimer()
+        self.cleanup_timer.timeout.connect(self.auto_cleanup)
+        self.cleanup_timer.start(60000)  # Check every minute
+        
+        # Apply initial filter after setup
+        self.apply_file_filter()
     
     def pin_to_desktop(self):
         """Uses win32gui to set the parent of this window to the desktop."""
@@ -290,10 +322,57 @@ class DesktopWidget(ResizableFramelessWindow):
 
     def directory_changed(self):
         self.model.setRootPath(""); self.model.setRootPath(self.tempdrop_folder)
-        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
+        self.apply_file_filter()
+        
+    def apply_file_filter(self):
+        """Apply file filter based on modification time."""
+        import time
+        current_time = time.time()
+        filter_period = self.config.get('filter_period', 86400)  # Default 1 day
+        
+        # Create a custom filter that checks modification time
+        class TimeFilterProxyModel(QSortFilterProxyModel):
+            def __init__(self, source_model, tempdrop_folder, filter_period, current_time):
+                super().__init__()
+                self.source_model = source_model
+                self.tempdrop_folder = tempdrop_folder
+                self.filter_period = filter_period
+                self.current_time = current_time
+                
+            def filterAcceptsRow(self, source_row, source_parent):
+                source_index = self.source_model.index(source_row, 0, source_parent)
+                if not source_index.isValid():
+                    return False
+                    
+                file_path = self.source_model.filePath(source_index)
+                if not os.path.exists(file_path):
+                    return False
+                
+                # Only filter files within the TempDrop folder
+                if not file_path.startswith(self.tempdrop_folder):
+                    return True
+                    
+                # Get file modification time
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    return (self.current_time - mtime) <= self.filter_period
+                except:
+                    return False
+        
+        # Create new proxy model with time filtering
+        self.proxy_model = TimeFilterProxyModel(self.model, self.tempdrop_folder, filter_period, current_time)
+        self.proxy_model.setSourceModel(self.model)
+        self.proxy_model.setFilterKeyColumn(0)
+        
+        # Update the view to use the new proxy model
+        self.view.setModel(self.proxy_model)
+        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
     
     def open_item(self, index):
-        try: os.startfile(self.model.filePath(index))
+        try: 
+            source_index = self.proxy_model.mapToSource(index)
+            os.startfile(self.model.filePath(source_index))
         except Exception as e: QMessageBox.warning(self, "Error", f"Could not open item:\n{e}")
             
     def show_context_menu(self, position):
@@ -321,11 +400,12 @@ class DesktopWidget(ResizableFramelessWindow):
         menu.addSeparator()
         menu.addAction("Show in Explorer", self.show_in_explorer)
         menu.addAction("Refresh", self.refresh_view)
+        menu.addAction("Settings", self.show_settings_dialog)
         
         menu.exec(self.view.viewport().mapToGlobal(position))
 
     def delete_items(self, indexes):
-        paths = [self.model.filePath(i) for i in indexes]
+        paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
         reply = QMessageBox.question(self, "Confirm Delete", f"Permanently delete {len(paths)} item(s)?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
@@ -339,14 +419,92 @@ class DesktopWidget(ResizableFramelessWindow):
         subprocess.Popen(f'explorer "{self.tempdrop_folder}"')
         
     def show_settings_dialog(self):
-        # Using a QMessageBox for simplicity
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("TempDrop Settings")
-        msg_box.setText(f"<b>TempDrop Folder:</b><br>{self.tempdrop_folder}")
-        msg_box.addButton("Open Folder", QMessageBox.ButtonRole.ActionRole).clicked.connect(self.show_in_explorer)
-        msg_box.addButton("Clear All Items...", QMessageBox.ButtonRole.ActionRole).clicked.connect(self.clear_tempdrop_folder)
-        msg_box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
-        msg_box.exec()
+        """Show the settings dialog with filtering and deletion options."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox, QPushButton, QGroupBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("TempDrop Settings")
+        dialog.setFixedSize(400, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Folder section
+        folder_group = QGroupBox("Storage Location")
+        folder_layout = QVBoxLayout(folder_group)
+        folder_label = QLabel(f"TempDrop Folder: {self.tempdrop_folder}")
+        folder_layout.addWidget(folder_label)
+        
+        folder_buttons = QHBoxLayout()
+        open_folder_btn = QPushButton("Open Folder")
+        open_folder_btn.clicked.connect(self.show_in_explorer)
+        folder_buttons.addWidget(open_folder_btn)
+        folder_layout.addLayout(folder_buttons)
+        layout.addWidget(folder_group)
+        
+        # Filtering section
+        filter_group = QGroupBox("File Filtering")
+        filter_layout = QVBoxLayout(filter_group)
+        
+        filter_label = QLabel("Show files modified within:")
+        filter_layout.addWidget(filter_label)
+        
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("1 minute (for testing)", 60)
+        self.filter_combo.addItem("1 day", 86400)
+        self.filter_combo.addItem("1 week", 604800)
+        self.filter_combo.addItem("1 month", 2592000)
+        
+        # Set current value
+        current_period = self.config.get('filter_period', 86400)
+        for i in range(self.filter_combo.count()):
+            if self.filter_combo.itemData(i) == current_period:
+                self.filter_combo.setCurrentIndex(i)
+                break
+        
+        self.filter_combo.currentIndexChanged.connect(self.on_filter_changed)
+        filter_layout.addWidget(self.filter_combo)
+        layout.addWidget(filter_group)
+        
+        # Auto-delete section
+        delete_group = QGroupBox("Auto-Cleanup")
+        delete_layout = QVBoxLayout(delete_group)
+        
+        self.auto_delete_checkbox = QCheckBox("Also delete files after this period")
+        self.auto_delete_checkbox.setChecked(self.config.get('auto_delete', False))
+        self.auto_delete_checkbox.stateChanged.connect(self.on_auto_delete_changed)
+        delete_layout.addWidget(self.auto_delete_checkbox)
+        
+        delete_warning = QLabel("⚠️ Warning: This will permanently delete files!")
+        delete_warning.setStyleSheet("color: red;")
+        delete_layout.addWidget(delete_warning)
+        layout.addWidget(delete_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        clear_btn = QPushButton("Clear All Items...")
+        clear_btn.clicked.connect(self.clear_tempdrop_folder)
+        button_layout.addWidget(clear_btn)
+        
+        button_layout.addStretch()
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+        
+    def on_filter_changed(self):
+        """Handle filter period change."""
+        self.config['filter_period'] = self.filter_combo.currentData()
+        self.save_config()
+        self.apply_file_filter()
+        
+    def on_auto_delete_changed(self):
+        """Handle auto-delete checkbox change."""
+        self.config['auto_delete'] = self.auto_delete_checkbox.isChecked()
+        self.save_config()
         
     def clear_tempdrop_folder(self):
         reply = QMessageBox.warning(self, "Confirm Clear", "Permanently delete ALL items in TempDrop?",
@@ -500,7 +658,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def copy_items(self, indexes):
         """Copy items to clipboard."""
         try:
-            paths = [self.model.filePath(i) for i in indexes]
+            paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -511,7 +669,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def cut_items(self, indexes):
         """Cut items to clipboard."""
         try:
-            paths = [self.model.filePath(i) for i in indexes]
+            paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -554,7 +712,8 @@ class DesktopWidget(ResizableFramelessWindow):
     def open_with_dialog(self, index):
         """Open file with default application dialog."""
         try:
-            file_path = self.model.filePath(index)
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             os.startfile(file_path)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not open file:\n{e}")
@@ -562,7 +721,8 @@ class DesktopWidget(ResizableFramelessWindow):
     def rename_item(self, index):
         """Rename the selected item."""
         try:
-            file_path = self.model.filePath(index)
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             filename = os.path.basename(file_path)
             new_name, ok = QInputDialog.getText(self, "Rename", "Enter new name:", text=filename)
             if ok and new_name and new_name != filename:
@@ -577,7 +737,8 @@ class DesktopWidget(ResizableFramelessWindow):
     def show_properties(self, index):
         """Show file properties dialog."""
         try:
-            file_path = self.model.filePath(index)
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             subprocess.Popen(['explorer', '/select,', file_path])
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not show properties:\n{e}")
@@ -585,6 +746,31 @@ class DesktopWidget(ResizableFramelessWindow):
     def refresh_view(self):
         """Refresh the file view."""
         self.directory_changed()
+        
+    def auto_cleanup(self):
+        """Automatically delete old files if auto-delete is enabled."""
+        if not self.config.get('auto_delete', False):
+            return
+            
+        import time
+        current_time = time.time()
+        filter_period = self.config.get('filter_period', 86400)
+        
+        try:
+            for item in os.listdir(self.tempdrop_folder):
+                item_path = os.path.join(self.tempdrop_folder, item)
+                if os.path.exists(item_path):
+                    try:
+                        mtime = os.path.getmtime(item_path)
+                        if (current_time - mtime) > filter_period:
+                            if os.path.isfile(item_path):
+                                os.remove(item_path)
+                            elif os.path.isdir(item_path):
+                                shutil.rmtree(item_path)
+                    except Exception as e:
+                        print(f"Failed to delete {item_path}: {e}")
+        except Exception as e:
+            print(f"Auto-cleanup error: {e}")
 
     def closeEvent(self, event):
         self.save_config(); event.accept(); QApplication.instance().quit()
