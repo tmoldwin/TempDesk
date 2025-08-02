@@ -1,21 +1,38 @@
 @echo off
-set VENV_DIR=.venv
+echo Starting TempDrop...
+echo.
 
-IF NOT EXIST "%VENV_DIR%" (
-    echo Creating virtual environment...
-    python -m venv "%VENV_DIR%"
+REM Check if Python is installed
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo Error: Python is not installed or not in PATH
+    echo Please install Python 3.7 or higher
+    pause
+    exit /b 1
 )
 
-echo Activating virtual environment...
-call "%VENV_DIR%\Scripts\activate.bat"
+REM Check if virtual environment exists
+if not exist ".venv" (
+    echo Creating virtual environment...
+    python -m venv .venv
+)
 
+REM Activate virtual environment
+echo Activating virtual environment...
+call .venv\Scripts\activate.bat
+
+REM Install dependencies
 echo Installing dependencies...
 pip install -r requirements.txt
 
-echo Starting TempDrop...
+REM Create icons if they don't exist
+if not exist "icons" (
+    echo Creating icons...
+    python create_icons.py
+)
+
+REM Run TempDrop
+echo Starting TempDrop application...
 python tempdrop.py
 
-echo Deactivating virtual environment...
-call "%VENV_DIR%\Scripts\deactivate.bat"
-
-pause
+pause 

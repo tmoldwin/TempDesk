@@ -6,6 +6,56 @@ TempDrop is a desktop widget that solves a common problem: you have files you ne
 
 TempDrop gives you a transparent window on your desktop where you can store these temporary files. They automatically get deleted after a few days, keeping your desktop clean.
 
+## Features
+
+- **Transparent Desktop Widget**: Semi-transparent window that stays on your desktop
+- **Drag & Drop Support**: Simply drag files into the widget to add them
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+- **Auto-Cleanup**: Files automatically deleted after configurable days (default: 7 days)
+- **File Icons**: Files display with appropriate icons based on type
+- **Context Menus**: Right-click files for open, delete, and properties
+- **Settings**: Configure auto-deletion time and storage location
+- **File Watcher**: Automatically detects files added to the temp folder
+
+## Quick Start
+
+### Windows (Recommended)
+
+1. **Download and extract** the project
+2. **Double-click `run.bat`** to start TempDrop
+3. **Drag files** into the transparent widget on your desktop
+4. **Configure settings** by clicking the gear icon (⚙)
+
+### Manual Installation
+
+1. **Install Python 3.7+** from [python.org](https://python.org)
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Create icons**:
+   ```bash
+   python create_icons.py
+   ```
+4. **Run the application**:
+   ```bash
+   python tempdrop.py
+   ```
+
+### Build Executable
+
+To create a standalone executable:
+
+```bash
+# Windows
+build.bat
+
+# Or manually
+python build.py
+```
+
+The executable will be created in the `dist/` folder.
+
 ## How It Works
 
 ### The Widget
@@ -18,7 +68,6 @@ TempDrop gives you a transparent window on your desktop where you can store thes
 ### Adding Files
 - **Drag and Drop**: Simply drag any file from your computer into the TempDrop window
 - **Auto-Detection**: If you save files directly to the TempDrop folder, they automatically appear in the widget
-- **Manual Add**: Click a button to browse and add files
 
 ### File Display
 Files appear as desktop shortcuts/icons (not a boring file list):
@@ -34,17 +83,14 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Auto-Cleanup**: Files automatically disappear after the number of days you set (default: 7 days)
 
 ### Widget Controls
-- **Move**: Drag the title bar to move the widget around
-- **Resize**: Drag the corners to make it bigger or smaller
+- **Move**: Drag anywhere on the window to move it around
 - **Close**: Click the X button to close the widget
-- **Settings**: Click the gear icon to change auto-deletion time, storage folder, etc.
-- **Open Folder**: Click the folder icon to open the TempDrop storage folder directly
+- **Settings**: Click the gear icon (⚙) to change auto-deletion time, storage folder, etc.
+- **Open Folder**: Click the folder icon (📁) to open the TempDrop storage folder directly
 
 ### Settings
 - **Auto-deletion**: Set how many days before files are automatically deleted (1-30 days)
 - **Storage Location**: Choose where files are stored (default: your Documents folder)
-- **Transparency**: Adjust how transparent the widget appears
-- **Start with Windows**: Option to start TempDrop automatically when you boot up
 
 ## User Experience Flow
 
@@ -62,6 +108,7 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Automatic**: Set it and forget it - files clean themselves up
 - **Flexible**: Move it, resize it, configure it however you want
 - **Non-Intrusive**: Semi-transparent so it doesn't block your desktop
+- **Cross-Platform**: Works consistently across Windows, macOS, and Linux
 
 ## Common Use Cases
 
@@ -70,6 +117,25 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Documents**: Store work-in-progress files that you'll delete later
 - **Media**: Keep temporary images, videos, or audio files
 - **Backups**: Store files you're about to delete but want to keep briefly
+
+## Technical Details
+
+### Technology Stack
+- **Python 3.7+**: Core language
+- **PyQt6**: Modern GUI framework with excellent drag-drop support
+- **watchdog**: File system monitoring
+- **Pillow**: Image processing for icons
+- **pywin32**: Windows-specific features (Windows only)
+
+### Cross-Platform Support
+- **Windows**: Full native drag-drop support
+- **macOS**: Full support with file dialog fallback
+- **Linux**: Full support with file dialog fallback
+
+### File Storage
+- **Windows**: `C:\Users\YourName\TempDrop`
+- **macOS**: `/Users/YourName/TempDrop`
+- **Linux**: `/home/YourName/TempDrop`
 
 ## Getting Started
 

@@ -1,0 +1,15 @@
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.GeneratedMSBuildEditorConfig.editorconfig
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.AssemblyInfoInputs.cache
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.AssemblyInfo.cs
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.csproj.CoreCompileInputs.cache
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.sourcelink.json
+C:\Code\Tempdrop\bin\Debug\net6.0-windows\TempDrop.exe
+C:\Code\Tempdrop\bin\Debug\net6.0-windows\TempDrop.deps.json
+C:\Code\Tempdrop\bin\Debug\net6.0-windows\TempDrop.runtimeconfig.json
+C:\Code\Tempdrop\bin\Debug\net6.0-windows\TempDrop.dll
+C:\Code\Tempdrop\bin\Debug\net6.0-windows\TempDrop.pdb
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.dll
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\refint\TempDrop.dll
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.pdb
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\TempDrop.genruntimeconfig.cache
+C:\Code\Tempdrop\obj\Debug\net6.0-windows\ref\TempDrop.dll
