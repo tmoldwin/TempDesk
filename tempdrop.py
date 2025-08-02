@@ -339,9 +339,16 @@ class DesktopWidget(ResizableFramelessWindow):
         print(f"[LOG] Filter period: {filter_period}s")
         print(f"[LOG] Current time: {current_time}")
         
-        # Create a temporary hidden folder for old files
+        # Create a temporary hidden folder for old files (with hidden attribute)
         hidden_folder = os.path.join(self.tempdrop_folder, '.hidden_old_files')
         os.makedirs(hidden_folder, exist_ok=True)
+        
+        # Hide the folder on Windows
+        try:
+            import subprocess
+            subprocess.run(['attrib', '+H', hidden_folder], check=False, capture_output=True)
+        except:
+            pass  # If hiding fails, continue anyway
         
         # Move old files to hidden folder, bring back recent files
         try:
@@ -405,8 +412,10 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath("")
         self.model.setRootPath(self.tempdrop_folder)
         
-        # Show what's actually visible now
-        self.debug_visible_items()
+        # Give the file system and model a moment to update
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self.debug_visible_items)
+        
         print(f"🔍 FILTER APPLICATION COMPLETE\n")
     
     def debug_visible_items(self):
