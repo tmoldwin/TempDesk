@@ -1,86 +1,82 @@
-# TempDrop - Desktop File Widget
+# TempDrop - Desktop Widget
 
-TempDrop is a transparent desktop widget for Windows that helps you manage temporary files. Instead of cluttering your desktop with files you need temporarily, TempDrop provides a dedicated space that automatically cleans up old files.
+## What is TempDrop?
 
-## Features
+TempDrop is a desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
 
-- **Transparent Widget**: Appears as a semi-transparent window on your desktop
-- **Drag & Drop**: Simply drag files into the widget to store them
-- **Auto-Cleanup**: Files are automatically deleted after a configurable number of days (default: 7 days)
-- **File Management**: Double-click files to open them, or use the delete button to remove them manually
-- **Draggable Window**: Move the widget anywhere on your desktop
-- **Settings**: Configure auto-deletion period and storage folder
-- **Always on Top**: Widget stays visible above other windows
+TempDrop gives you a transparent window on your desktop where you can store these temporary files. They automatically get deleted after a few days, keeping your desktop clean.
 
-## Installation
+## How It Works
 
-1. Install Python 3.7 or higher
-2. Install required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. For full drag-and-drop support, also install:
-   ```bash
-   pip install tkinterdnd2
-   ```
+### The Widget
+- A semi-transparent window appears on your desktop
+- It stays behind other windows - only visible when you're on the desktop
+- You can drag it anywhere on your desktop
+- You can resize it to fit more or fewer files
+- It doesn't appear in your taskbar or Alt-Tab list - it's just part of your desktop
 
-## Usage
+### Adding Files
+- **Drag and Drop**: Simply drag any file from your computer into the TempDrop window
+- **Auto-Detection**: If you save files directly to the TempDrop folder, they automatically appear in the widget
+- **Manual Add**: Click a button to browse and add files
 
-1. Run the application:
-   ```bash
-   python tempdrop.py
-   ```
+### File Display
+Files appear as desktop shortcuts/icons (not a boring file list):
+- Each file shows with its proper icon (PDFs look like PDFs, images look like images, etc.)
+- Files are arranged in a grid like desktop shortcuts
+- You can see file names clearly
+- Right-click any file for options (open, delete, properties)
 
-2. The widget will appear on your desktop as a transparent window
+### Managing Files
+- **Open**: Double-click any file to open it with its default program
+- **Delete**: Right-click and select "Delete" or use the trash icon
+- **Properties**: Right-click to see file details
+- **Auto-Cleanup**: Files automatically disappear after the number of days you set (default: 7 days)
 
-3. **Adding Files**:
-   - Drag files from your desktop or file explorer into the widget
-   - Files are automatically moved to the TempDrop folder
+### Widget Controls
+- **Move**: Drag the title bar to move the widget around
+- **Resize**: Drag the corners to make it bigger or smaller
+- **Close**: Click the X button to close the widget
+- **Settings**: Click the gear icon to change auto-deletion time, storage folder, etc.
+- **Open Folder**: Click the folder icon to open the TempDrop storage folder directly
 
-4. **Managing Files**:
-   - Double-click any file in the widget to open it
-   - Click the trash icon (🗑) next to a file to delete it manually
-   - Files are automatically deleted after the configured number of days
+### Settings
+- **Auto-deletion**: Set how many days before files are automatically deleted (1-30 days)
+- **Storage Location**: Choose where files are stored (default: your Documents folder)
+- **Transparency**: Adjust how transparent the widget appears
+- **Start with Windows**: Option to start TempDrop automatically when you boot up
 
-5. **Settings**:
-   - Click the gear icon (⚙) in the title bar to open settings
-   - Configure auto-deletion period (default: 7 days)
-   - Change the storage folder location
-   - Right-click the widget for additional options
+## User Experience Flow
 
-6. **Window Controls**:
-   - Drag the title bar to move the widget
-   - Click the × button to close the application
-   - Right-click for context menu
+1. **Start**: Run TempDrop - a transparent window appears on your desktop
+2. **Add Files**: Drag files into the window or save them to the TempDrop folder
+3. **See Files**: Files appear as desktop-style icons in the widget
+4. **Use Files**: Double-click to open, right-click for more options
+5. **Auto-Cleanup**: Files automatically disappear after your set time period
+6. **Configure**: Use settings to adjust behavior to your preferences
 
-## Configuration
+## What Makes It Special
 
-The application creates a `tempdrop_config.json` file in the same directory to store your settings:
-- `auto_delete_days`: Number of days before files are auto-deleted
-- `temp_folder`: Path to the folder where files are stored
+- **Desktop Widget**: It's not a regular app - it's part of your desktop
+- **Visual**: Files look like desktop shortcuts, not a boring list
+- **Automatic**: Set it and forget it - files clean themselves up
+- **Flexible**: Move it, resize it, configure it however you want
+- **Non-Intrusive**: Semi-transparent so it doesn't block your desktop
 
-## File Storage
+## Common Use Cases
 
-By default, files are stored in `~/TempDrop` (your user directory). You can change this location in the settings.
+- **Downloads**: Drag downloaded files here instead of leaving them on desktop
+- **Screenshots**: Save screenshots here for temporary reference
+- **Documents**: Store work-in-progress files that you'll delete later
+- **Media**: Keep temporary images, videos, or audio files
+- **Backups**: Store files you're about to delete but want to keep briefly
 
-## Requirements
+## Getting Started
 
-- Python 3.7+
-- tkinter (usually included with Python)
-- watchdog (for file monitoring)
-- pillow (for image handling)
-- tkinterdnd2 (optional, for enhanced drag-and-drop)
+1. Download and install TempDrop
+2. The widget appears on your desktop automatically
+3. Start dragging files into it
+4. Configure settings to your preference
+5. Enjoy a cleaner desktop!
 
-## Troubleshooting
-
-- If drag-and-drop doesn't work, install `tkinterdnd2`
-- If the widget doesn't appear transparent, try running as administrator
-- Files are stored in the configured folder and can be accessed directly
-
-## Future Enhancements
-
-- Support for other operating systems (macOS, Linux)
-- File type filtering
-- Custom themes
-- System tray integration
-- Startup with Windows option 
+That's it - TempDrop works in the background, keeping your desktop organized without you having to think about it. 

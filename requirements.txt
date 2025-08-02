@@ -1,4 +1,4 @@
-tkinter
-watchdog==3.0.0
-pillow==10.0.1
-tkinterdnd2==0.3.0 
+watchdog>=3.0.0
+Pillow>=10.1.0
+tkdnd==2.14
+pywin32>=300; sys_platform == 'win32'
