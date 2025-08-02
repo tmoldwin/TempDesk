@@ -1,346 +1,407 @@
 #!/usr/bin/env python3
 """
-TempDrop - Simple File Explorer for Temporary Files
-Just a normal file list window that stays on desktop.
+TempDrop - A custom file explorer widget for the desktop.
 """
 
 import sys
 import os
 import json
 import shutil
-import datetime
+import subprocess
 from pathlib import Path
-import platform
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMenu, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem
+    QLabel, QPushButton, QListView, QAbstractItemView, QMenu, QMessageBox,
+    QFileIconProvider, QDialog, QDialogButtonBox, QSizePolicy
 )
 from PyQt6.QtCore import (
-    Qt, QTimer
+    Qt, QSize, QPoint, QRect, QFileSystemWatcher
 )
 from PyQt6.QtGui import (
-    QAction, QIcon
+    QFileSystemModel, QIcon, QAction, QMouseEvent
 )
 
+class ResizableFramelessWindow(QMainWindow):
+    """
+    A base class for a frameless window that can be resized by dragging its
+    edges and corners.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        self.drag_position = None
+        self.resizing = False
+        self.resize_edge = None
+        self.resize_margin = 8
 
-class TempDropWidget(QMainWindow):
-    """Simple file list window for TempDrop."""
-    
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            if self.is_on_edge(pos):
+                self.resizing = True
+                self.resize_edge = self.get_edge(pos)
+            else:
+                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        pos = event.position().toPoint()
+        if self.resizing:
+            self.resize_window(event.globalPosition().toPoint())
+        elif self.drag_position:
+             if self.title_bar.underMouse():
+                self.move(event.globalPosition().toPoint() - self.drag_position)
+        else:
+            self.update_cursor(pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.drag_position = None
+        self.resizing = False
+        self.resize_edge = None
+        self.unsetCursor()
+        super().mouseReleaseEvent(event)
+
+    def is_on_edge(self, pos: QPoint) -> bool:
+        return any(self.get_edge(pos))
+
+    def get_edge(self, pos: QPoint) -> tuple:
+        left = pos.x() < self.resize_margin
+        top = pos.y() < self.resize_margin
+        right = pos.x() > self.width() - self.resize_margin
+        bottom = pos.y() > self.height() - self.resize_margin
+        return left, top, right, bottom
+
+    def update_cursor(self, pos: QPoint):
+        left, top, right, bottom = self.get_edge(pos)
+        if (left and top) or (right and bottom):
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        elif (right and top) or (left and bottom):
+            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif left or right:
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif top or bottom:
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            self.unsetCursor()
+
+    def resize_window(self, global_pos: QPoint):
+        rect = self.geometry()
+        left, top, right, bottom = self.resize_edge
+
+        if left:
+            rect.setLeft(global_pos.x())
+        if top:
+            rect.setTop(global_pos.y())
+        if right:
+            rect.setRight(global_pos.x())
+        if bottom:
+            rect.setBottom(global_pos.y())
+        
+        if rect.width() < self.minimumWidth():
+            rect.setWidth(self.minimumWidth())
+        if rect.height() < self.minimumHeight():
+            rect.setHeight(self.minimumHeight())
+
+        self.setGeometry(rect)
+
+
+class DesktopWidget(ResizableFramelessWindow):
+    """
+    The main file explorer widget, inheriting resizability.
+    """
     def __init__(self):
         super().__init__()
         self.config = self.load_config()
-        self.temp_folder = self.config.get('temp_folder', self.get_default_temp_folder())
-        self.auto_delete_days = self.config.get('auto_delete_days', 7)
+        self.tempdrop_folder = self.get_tempdrop_folder()
+        self.is_dragging = False
+
+        os.makedirs(self.tempdrop_folder, exist_ok=True)
         
+        self.setAcceptDrops(True)
         self.setup_ui()
         self.setup_window_properties()
-        self.load_files()
-        self.start_cleanup_timer()
+        self.setup_file_system_model()
         
+    def get_tempdrop_folder(self) -> str:
+        return str(Path.home() / 'TempDrop')
+    
     def load_config(self) -> dict:
-        """Load configuration from file."""
         config_path = Path.home() / '.tempdrop_config.json'
         if config_path.exists():
             try:
                 with open(config_path, 'r') as f:
                     return json.load(f)
-            except:
-                pass
+            except json.JSONDecodeError:
+                return {}
         return {}
     
     def save_config(self):
-        """Save configuration to file."""
         config_path = Path.home() / '.tempdrop_config.json'
-        config = {
-            'temp_folder': self.temp_folder,
-            'auto_delete_days': self.auto_delete_days
-        }
+        config = {'window_geometry': self.saveGeometry().data().hex()}
         try:
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=2)
         except Exception as e:
             print(f"Error saving config: {e}")
     
-    def get_default_temp_folder(self) -> str:
-        """Get default temp folder path."""
-        return str(Path.home() / 'TempDrop')
-    
     def setup_ui(self):
-        """Setup the user interface."""
         self.setWindowTitle("TempDrop")
-        self.setMinimumSize(600, 400)
-        self.resize(800, 500)
+        self.setMinimumSize(300, 200)
         
-        # Central widget
-        central_widget = QWidget()
+        central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
+        central_widget.setObjectName("centralWidget")
+        central_widget.setStyleSheet("#centralWidget { background-color: transparent; }")
+
+        self.main_layout = QVBoxLayout(central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        self.title_bar = self.create_title_bar()
+        self.main_layout.addWidget(self.title_bar)
         
-        # Main layout
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
+        self.view = QListView()
+        self.view.setFlow(QListView.Flow.LeftToRight)
+        self.view.setWrapping(True)
+        self.view.setResizeMode(QListView.ResizeMode.Adjust)
+        self.view.setMovement(QListView.Movement.Snap)
+        self.view.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self.view.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.view.setViewMode(QListView.ViewMode.IconMode)
+        self.view.setIconSize(QSize(64, 64))
+        self.view.setGridSize(QSize(84, 84))
+        self.view.setWordWrap(True)
         
-        # Toolbar
-        toolbar_layout = QHBoxLayout()
+        self.view.doubleClicked.connect(self.open_item)
+        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.view.customContextMenuRequested.connect(self.show_context_menu)
         
-        self.title_label = QLabel("TempDrop")
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        
-        # Control buttons
-        self.folder_btn = QPushButton("📁 Open Folder")
-        self.folder_btn.clicked.connect(self.open_temp_folder)
-        
-        self.settings_btn = QPushButton("⚙ Settings")
-        self.settings_btn.clicked.connect(self.show_settings)
-        
-        self.close_btn = QPushButton("× Close")
-        self.close_btn.clicked.connect(self.close)
-        self.close_btn.setStyleSheet("""
-            QPushButton {
-                background: #ff4444;
-                border: none;
-                border-radius: 4px;
-                color: white;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background: #ff6666;
-            }
+        self.view.setObjectName("fileView")
+        self.update_stylesheet() # Set initial stylesheet
+        self.main_layout.addWidget(self.view)
+
+    def create_title_bar(self) -> QWidget:
+        self.title_bar = QWidget() # Make title_bar an instance attribute
+        self.title_bar.setFixedHeight(32)
+        self.title_bar.setStyleSheet("""
+            background-color: #0078D7;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
         """)
         
-        toolbar_layout.addWidget(self.title_label)
-        toolbar_layout.addStretch()
-        toolbar_layout.addWidget(self.folder_btn)
-        toolbar_layout.addWidget(self.settings_btn)
-        toolbar_layout.addWidget(self.close_btn)
+        title_layout = QHBoxLayout(self.title_bar)
+        title_layout.setContentsMargins(10, 0, 5, 0)
         
-        layout.addLayout(toolbar_layout)
+        title_label = QLabel(f"📁 TempDrop")
+        title_label.setStyleSheet("color: white; font-weight: bold;")
         
-        # File list
-        self.file_list = QListWidget()
-        self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.file_list.customContextMenuRequested.connect(self.show_context_menu)
-        self.file_list.itemDoubleClicked.connect(self.open_file)
+        settings_btn = QPushButton("⚙️")
+        settings_btn.setFixedSize(28, 28)
+        settings_btn.clicked.connect(self.show_settings_dialog)
+        settings_btn.setStyleSheet("""
+            QPushButton { border: none; color: white; font-size: 16px; }
+            QPushButton:hover { background-color: #3a93de; }
+        """)
+
+        close_btn = QPushButton("×")
+        close_btn.setFixedSize(28, 28)
+        close_btn.clicked.connect(self.close)
+        close_btn.setStyleSheet("""
+            QPushButton { border: none; color: white; font-size: 20px; }
+            QPushButton:hover { background-color: #E81123; }
+        """)
+
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        title_layout.addWidget(settings_btn)
+        title_layout.addWidget(close_btn)
         
-        layout.addWidget(self.file_list)
-        
+        return self.title_bar
+
     def setup_window_properties(self):
-        """Setup window properties."""
-        # Keep it always on top
-        self.setWindowFlags(
-            Qt.WindowType.WindowStaysOnTopHint
-        )
-        
-        # Position window on desktop
-        screen = QApplication.primaryScreen()
-        screen_rect = screen.geometry()
-        self.move(screen_rect.width() - self.width() - 20, 100)
-        
-    def load_files(self):
-        """Load existing files from temp folder."""
-        # Ensure temp folder exists
-        os.makedirs(self.temp_folder, exist_ok=True)
-        
-        self.file_list.clear()
+        if 'window_geometry' in self.config:
+            self.restoreGeometry(bytes.fromhex(self.config['window_geometry']))
+        else:
+            screen = QApplication.primaryScreen().geometry()
+            self.resize(500, 350)
+            self.move(screen.width() - self.width() - 20, 40)
+    
+    def setup_file_system_model(self):
+        self.model = QFileSystemModel()
+        self.model.setRootPath(self.tempdrop_folder)
+        self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
+
+        self.view.setModel(self.model)
+        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+
+        self.watcher = QFileSystemWatcher([self.tempdrop_folder])
+        self.watcher.directoryChanged.connect(self.directory_changed)
+    
+    def directory_changed(self):
+        self.model.setRootPath("") # Force refresh
+        self.model.setRootPath(self.tempdrop_folder)
+        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+    
+    def open_item(self, index):
+        file_path = self.model.filePath(index)
         try:
-            for file_path in os.listdir(self.temp_folder):
-                full_path = os.path.join(self.temp_folder, file_path)
-                if os.path.isfile(full_path):
-                    self.add_file_item(full_path)
+            os.startfile(file_path)
         except Exception as e:
-            print(f"Error loading files: {e}")
-    
-    def add_file_item(self, file_path: str):
-        """Add a file item to the list."""
-        filename = os.path.basename(file_path)
-        item = QListWidgetItem(filename)
-        item.setData(Qt.ItemDataRole.UserRole, file_path)
-        self.file_list.addItem(item)
-    
-    def open_temp_folder(self):
-        """Open the temp folder in file explorer."""
-        try:
-            if platform.system() == "Windows":
-                os.startfile(self.temp_folder)
-            elif platform.system() == "Darwin":  # macOS
-                os.system(f'open "{self.temp_folder}"')
-            else:  # Linux
-                os.system(f'xdg-open "{self.temp_folder}"')
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not open folder: {e}")
-    
+            QMessageBox.warning(self, "Error", f"Could not open '{file_path}':\n{e}")
+            
     def show_context_menu(self, position):
-        """Show context menu for file operations."""
-        menu = QMenu(self)
-        
-        # Add file action
-        add_action = QAction("Add Files...", self)
-        add_action.triggered.connect(self.add_files_dialog)
-        menu.addAction(add_action)
-        
-        menu.addSeparator()
-        
-        # File-specific actions
-        item = self.file_list.itemAt(position)
-        if item:
-            file_path = item.data(Qt.ItemDataRole.UserRole)
-            
-            open_action = QAction("Open", self)
-            open_action.triggered.connect(lambda: self.open_file(item))
-            menu.addAction(open_action)
-            
-            delete_action = QAction("Delete", self)
-            delete_action.triggered.connect(lambda: self.delete_file(item))
-            menu.addAction(delete_action)
+        indexes = self.view.selectedIndexes()
+        if not indexes:
+            return
+
+        menu = QMenu()
+        open_action = QAction("Open", self)
+        open_action.triggered.connect(lambda: self.open_item(indexes[0]))
+        menu.addAction(open_action)
+
+        delete_action = QAction("Delete", self)
+        delete_action.triggered.connect(lambda: self.delete_items(indexes))
+        menu.addAction(delete_action)
         
         menu.addSeparator()
+
+        show_in_folder_action = QAction("Show in Explorer", self)
+        show_in_folder_action.triggered.connect(self.show_in_explorer)
+        menu.addAction(show_in_folder_action)
         
-        # Settings
-        settings_action = QAction("Settings", self)
-        settings_action.triggered.connect(self.show_settings)
-        menu.addAction(settings_action)
-        
-        menu.exec(self.file_list.mapToGlobal(position))
-    
-    def add_files_dialog(self):
-        """Show file dialog to add files."""
-        files, _ = QFileDialog.getOpenFileNames(
-            self, "Add Files to TempDrop", "", "All Files (*.*)"
-        )
-        for file_path in files:
-            self.add_file(file_path)
-    
-    def add_file(self, file_path: str):
-        """Add a file to the temp folder."""
-        try:
-            filename = os.path.basename(file_path)
-            dest_path = os.path.join(self.temp_folder, filename)
-            
-            # Handle duplicate filenames
-            counter = 1
-            while os.path.exists(dest_path):
-                name, ext = os.path.splitext(filename)
-                dest_path = os.path.join(self.temp_folder, f"{name}_{counter}{ext}")
-                counter += 1
-            
-            shutil.copy2(file_path, dest_path)
-            self.add_file_item(dest_path)
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not add file: {e}")
-    
-    def open_file(self, item):
-        """Open the file with default application."""
-        file_path = item.data(Qt.ItemDataRole.UserRole)
-        try:
-            if platform.system() == "Windows":
-                os.startfile(file_path)
-            elif platform.system() == "Darwin":  # macOS
-                os.system(f'open "{file_path}"')
-            else:  # Linux
-                os.system(f'xdg-open "{file_path}"')
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not open file: {e}")
-    
-    def delete_file(self, item):
-        """Delete the file."""
-        file_path = item.data(Qt.ItemDataRole.UserRole)
-        filename = os.path.basename(file_path)
+        menu.exec(self.view.viewport().mapToGlobal(position))
+
+    def delete_items(self, indexes):
+        count = len(indexes)
+        file_paths = [self.model.filePath(i) for i in indexes]
         
         reply = QMessageBox.question(
-            self, "Delete File", 
-            f"Are you sure you want to delete {filename}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self, "Confirm Delete",
+            f"Are you sure you want to permanently delete {count} item(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
-        
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                os.remove(file_path)
-                self.file_list.takeItem(self.file_list.row(item))
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Could not delete file: {e}")
-    
-    def show_settings(self):
-        """Show settings dialog."""
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QSpinBox, QLineEdit
+            for path in file_paths:
+                try:
+                    if os.path.isfile(path): os.remove(path)
+                    elif os.path.isdir(path): shutil.rmtree(path)
+                except Exception as e:
+                    QMessageBox.warning(self, "Error", f"Could not delete '{path}':\n{e}")
+
+    def show_in_explorer(self):
+        subprocess.Popen(f'explorer "{self.tempdrop_folder}"')
         
+    def show_settings_dialog(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("TempDrop Settings")
-        dialog.setModal(True)
+        dialog.setWindowTitle("Settings")
+        layout = QVBoxLayout()
         
-        layout = QFormLayout(dialog)
+        info_label = QLabel(f"<b>TempDrop Folder:</b><br>{self.tempdrop_folder}")
+        info_label.setTextFormat(Qt.TextFormat.RichText)
+        info_label.setWordWrap(True)
         
-        # Auto-delete days
-        days_spin = QSpinBox()
-        days_spin.setRange(1, 365)
-        days_spin.setValue(self.auto_delete_days)
-        layout.addRow("Auto-delete after (days):", days_spin)
+        open_folder_btn = QPushButton("Open Folder Location")
+        open_folder_btn.clicked.connect(self.show_in_explorer)
         
-        # Temp folder
-        folder_edit = QLineEdit(self.temp_folder)
-        layout.addRow("Temp folder:", folder_edit)
+        clear_folder_btn = QPushButton("Clear All Items...")
+        clear_folder_btn.clicked.connect(self.clear_tempdrop_folder)
         
-        # Buttons
-        button_layout = QHBoxLayout()
-        ok_btn = QPushButton("OK")
-        cancel_btn = QPushButton("Cancel")
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(dialog.reject)
         
-        ok_btn.clicked.connect(dialog.accept)
-        cancel_btn.clicked.connect(dialog.reject)
+        layout.addWidget(info_label)
+        layout.addWidget(open_folder_btn)
+        layout.addWidget(clear_folder_btn)
+        layout.addWidget(button_box)
         
-        button_layout.addWidget(ok_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addRow(button_layout)
+        dialog.setLayout(layout)
+        dialog.exec()
         
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.auto_delete_days = days_spin.value()
-            self.temp_folder = folder_edit.text()
-            self.save_config()
+    def clear_tempdrop_folder(self):
+        reply = QMessageBox.warning(
+            self, "Confirm Clear",
+            "Are you sure you want to permanently delete ALL items in the TempDrop folder?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for item in os.listdir(self.tempdrop_folder):
+                item_path = os.path.join(self.tempdrop_folder, item)
+                try:
+                    if os.path.isfile(item_path): os.unlink(item_path)
+                    elif os.path.isdir(item_path): shutil.rmtree(item_path)
+                except Exception as e:
+                    print(f"Failed to delete {item_path}: {e}")
+
+    def update_stylesheet(self):
+        """Updates the stylesheet to provide visual feedback for drag-and-drop."""
+        border_color = "#0078D7" if self.is_dragging else "#ccc"
+        self.view.setStyleSheet(f"""
+            QListView#fileView {{
+                background-color: rgba(255, 255, 255, 0.9);
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+                border: 2px solid {border_color};
+                padding: 10px;
+            }}
+            QListView#fileView::item {{
+                width: 70px;
+                height: 70px;
+                color: #333;
+                text-align: center;
+            }}
+        """)
+
+    # --- Drag/Drop Events ---
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            self.is_dragging = True
+            self.update_stylesheet()
+            event.acceptProposedAction()
     
-    def start_cleanup_timer(self):
-        """Start timer for automatic file cleanup."""
-        self.cleanup_timer = QTimer()
-        self.cleanup_timer.timeout.connect(self.cleanup_old_files)
-        self.cleanup_timer.start(3600000)  # Check every hour
-        self.cleanup_old_files()  # Initial cleanup
-    
-    def cleanup_old_files(self):
-        """Remove files older than the specified days."""
-        try:
-            cutoff_date = datetime.datetime.now() - datetime.timedelta(days=self.auto_delete_days)
-            
-            for file_path in os.listdir(self.temp_folder):
-                full_path = os.path.join(self.temp_folder, file_path)
-                if os.path.isfile(full_path):
-                    file_time = datetime.datetime.fromtimestamp(os.path.getmtime(full_path))
-                    if file_time < cutoff_date:
-                        try:
-                            os.remove(full_path)
-                            print(f"Auto-deleted old file: {file_path}")
-                        except Exception as e:
-                            print(f"Error deleting old file {file_path}: {e}")
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
-    
+    def dragLeaveEvent(self, event):
+        self.is_dragging = False
+        self.update_stylesheet()
+        
+    def dropEvent(self, event):
+        self.is_dragging = False
+        self.update_stylesheet()
+        urls = event.mimeData().urls()
+        for url in urls:
+            src_path = url.toLocalFile()
+            dest_path = os.path.join(self.tempdrop_folder, os.path.basename(src_path))
+            try:
+                shutil.move(src_path, dest_path)
+            except Exception as e:
+                QMessageBox.warning(self, "Move Error", f"Could not move file:\n{e}")
+
     def closeEvent(self, event):
-        """Handle window close event."""
         self.save_config()
         event.accept()
 
 
 def main():
-    """Main application entry point."""
     app = QApplication(sys.argv)
+    app.setOrganizationName("TempDrop")
     app.setApplicationName("TempDrop")
-    app.setApplicationVersion("1.0.0")
+    app.setWindowIcon(QFileIconProvider().icon(QFileIconProvider.IconType.Folder))
     
-    widget = TempDropWidget()
+    widget = DesktopWidget()
     widget.show()
     
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    main() 
+    main()

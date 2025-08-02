@@ -73,11 +73,14 @@ namespace TempDrop
             this.Text = "TempDrop";
             this.Size = new Size(800, 500);
             this.MinimumSize = new Size(600, 400);
-            this.TopMost = true;
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(Screen.PrimaryScreen.WorkingArea.Width - this.Width - 20, 100);
             this.ShowInTaskbar = false;
-            this.WindowState = FormWindowState.Minimized;
+            this.WindowState = FormWindowState.Normal;
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.BackColor = Color.White;
+            this.TransparencyKey = Color.White;
+            this.Opacity = 0.95;
 
             // Create tray icon
             CreateTrayIcon();
@@ -217,6 +220,7 @@ namespace TempDrop
             fileListView.DragEnter += FileListView_DragEnter;
             fileListView.DragDrop += FileListView_DragDrop;
             fileListView.DoubleClick += FileListView_DoubleClick;
+            fileListView.KeyDown += FileListView_KeyDown;
 
             this.Controls.Add(fileListView);
             fileListView.BringToFront();
@@ -229,7 +233,13 @@ namespace TempDrop
         private void FileListView_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                e.Effect = DragDropEffects.Copy;
+            {
+                // Check if Ctrl is pressed for copy, otherwise move
+                if ((e.KeyState & 8) == 8) // Ctrl key
+                    e.Effect = DragDropEffects.Copy;
+                else
+                    e.Effect = DragDropEffects.Move;
+            }
         }
 
         private void FileListView_DragDrop(object sender, DragEventArgs e)
@@ -237,14 +247,45 @@ namespace TempDrop
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                bool isCopy = (e.KeyState & 8) == 8; // Ctrl key pressed
+                
                 foreach (string file in files)
                 {
-                    AddFile(file);
+                    if (isCopy)
+                        CopyFile(file);
+                    else
+                        MoveFile(file);
                 }
             }
         }
 
-        private void AddFile(string sourcePath)
+        private void MoveFile(string sourcePath)
+        {
+            try
+            {
+                string fileName = Path.GetFileName(sourcePath);
+                string destPath = Path.Combine(tempFolder, fileName);
+                
+                // Handle duplicate filenames
+                int counter = 1;
+                while (File.Exists(destPath))
+                {
+                    string name = Path.GetFileNameWithoutExtension(fileName);
+                    string ext = Path.GetExtension(fileName);
+                    destPath = Path.Combine(tempFolder, $"{name}_{counter}{ext}");
+                    counter++;
+                }
+                
+                File.Move(sourcePath, destPath);
+                LoadFiles(); // Refresh the list
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not move file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void CopyFile(string sourcePath)
         {
             try
             {
@@ -266,8 +307,13 @@ namespace TempDrop
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Could not add file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Could not copy file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void AddFile(string sourcePath)
+        {
+            CopyFile(sourcePath); // Default to copy behavior
         }
 
         private void FileListView_DoubleClick(object sender, EventArgs e)
@@ -338,6 +384,72 @@ namespace TempDrop
             return extension.ToUpper().TrimStart('.') + " File";
         }
 
+        private void FileListView_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control)
+            {
+                switch (e.KeyCode)
+                {
+                    case Keys.V: // Paste
+                        PasteFiles();
+                        e.Handled = true;
+                        break;
+                    case Keys.C: // Copy selected files
+                        CopySelectedFiles();
+                        e.Handled = true;
+                        break;
+                    case Keys.X: // Cut selected files
+                        CutSelectedFiles();
+                        e.Handled = true;
+                        break;
+                }
+            }
+        }
+
+        private void PasteFiles()
+        {
+            if (Clipboard.ContainsFileDropList())
+            {
+                var files = Clipboard.GetFileDropList();
+                foreach (string file in files)
+                {
+                    CopyFile(file);
+                }
+            }
+        }
+
+        private void CopySelectedFiles()
+        {
+            if (fileListView.SelectedItems.Count > 0)
+            {
+                var files = new System.Collections.Specialized.StringCollection();
+                foreach (ListViewItem item in fileListView.SelectedItems)
+                {
+                    files.Add(item.Tag.ToString());
+                }
+                Clipboard.SetFileDropList(files);
+            }
+        }
+
+        private void CutSelectedFiles()
+        {
+            if (fileListView.SelectedItems.Count > 0)
+            {
+                var files = new System.Collections.Specialized.StringCollection();
+                foreach (ListViewItem item in fileListView.SelectedItems)
+                {
+                    files.Add(item.Tag.ToString());
+                }
+                Clipboard.SetFileDropList(files);
+                
+                // Mark files for deletion after paste
+                foreach (ListViewItem item in fileListView.SelectedItems)
+                {
+                    item.Tag = "DELETE:" + item.Tag.ToString();
+                }
+            }
+        }
+
 
 
         private void ShowAddFilesDialog()
@@ -404,7 +516,7 @@ namespace TempDrop
             using (var form = new Form())
             {
                 form.Text = "TempDrop Settings";
-                form.Size = new Size(400, 200);
+                form.Size = new Size(500, 300);
                 form.StartPosition = FormStartPosition.CenterParent;
                 form.FormBorderStyle = FormBorderStyle.FixedDialog;
                 form.MaximizeBox = false;
@@ -414,28 +526,53 @@ namespace TempDrop
                 {
                     Dock = DockStyle.Fill,
                     ColumnCount = 2,
-                    RowCount = 4,
+                    RowCount = 6,
                     Padding = new Padding(10)
                 };
 
-                layout.Controls.Add(new Label { Text = "Auto-delete after (days):" }, 0, 0);
+                // Auto-delete setting
+                layout.Controls.Add(new Label { Text = "Auto-delete files after:", Font = new Font("Arial", 9, FontStyle.Bold) }, 0, 0);
+                layout.SetColumnSpan(layout.Controls[layout.Controls.Count - 1], 2);
+                
                 var daysSpinner = new NumericUpDown
                 {
                     Minimum = 1,
                     Maximum = 365,
-                    Value = Math.Max(1, autoDeleteDays)
+                    Value = Math.Max(1, autoDeleteDays),
+                    Location = new Point(10, 30)
                 };
-                layout.Controls.Add(daysSpinner, 1, 0);
+                layout.Controls.Add(daysSpinner, 0, 1);
+                layout.Controls.Add(new Label { Text = "days", Location = new Point(80, 30) }, 1, 1);
 
-                layout.Controls.Add(new Label { Text = "Temp folder:" }, 0, 1);
-                var folderBox = new TextBox { Text = tempFolder };
-                layout.Controls.Add(folderBox, 1, 1);
+                // Folder setting
+                layout.Controls.Add(new Label { Text = "Storage folder:", Font = new Font("Arial", 9, FontStyle.Bold) }, 0, 2);
+                layout.SetColumnSpan(layout.Controls[layout.Controls.Count - 1], 2);
+                
+                var folderBox = new TextBox { Text = tempFolder, Width = 400 };
+                layout.Controls.Add(folderBox, 0, 3);
+                layout.SetColumnSpan(layout.Controls[layout.Controls.Count - 1], 2);
 
-                var okBtn = new Button { Text = "OK", DialogResult = DialogResult.OK };
-                var cancelBtn = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
+                // Browse button
+                var browseBtn = new Button { Text = "Browse...", Width = 80 };
+                browseBtn.Click += (s, e) => {
+                    using (var dialog = new FolderBrowserDialog())
+                    {
+                        dialog.SelectedPath = tempFolder;
+                        if (dialog.ShowDialog() == DialogResult.OK)
+                        {
+                            folderBox.Text = dialog.SelectedPath;
+                        }
+                    }
+                };
+                layout.Controls.Add(browseBtn, 0, 4);
+                layout.SetColumnSpan(layout.Controls[layout.Controls.Count - 1], 2);
 
-                layout.Controls.Add(okBtn, 0, 3);
-                layout.Controls.Add(cancelBtn, 1, 3);
+                // Buttons
+                var okBtn = new Button { Text = "OK", DialogResult = DialogResult.OK, Width = 80 };
+                var cancelBtn = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Width = 80 };
+
+                layout.Controls.Add(okBtn, 0, 5);
+                layout.Controls.Add(cancelBtn, 1, 5);
 
                 form.Controls.Add(layout);
 

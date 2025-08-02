@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TempDrop")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+064695c532bab137e8ed37428bc8af677fd52d2b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+52e096da4c2e74abca8eaf703157fe9332b77df9")]
 [assembly: System.Reflection.AssemblyProductAttribute("TempDrop")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TempDrop")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

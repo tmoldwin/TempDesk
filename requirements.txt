@@ -1,4 +1,1 @@
-PyQt6>=6.5.0
-watchdog>=3.0.0
-Pillow>=10.1.0
-pywin32>=300; sys_platform == 'win32' 
+PyQt6>=6.4.0
