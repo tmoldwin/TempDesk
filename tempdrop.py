@@ -327,38 +327,87 @@ class DesktopWidget(ResizableFramelessWindow):
         print(f"[DIRECTORY] Directory changed, refreshed view")
         
     def apply_file_filter(self):
-        """TEMPORARILY DISABLED - Just show all files for now."""
+        """Apply file filter by temporarily hiding old files from the folder."""
         import time
         import os
         
         filter_period = self.config.get('filter_period', 86400)  # Default 1 day
         current_time = time.time()
         
-        print(f"\n💥 FILTER DISABLED FOR DEBUGGING")
+        print(f"\n🔍 APPLYING WORKING FILTER")
         print(f"[LOG] TempDrop folder: {self.tempdrop_folder}")
-        print(f"[LOG] Filter period: {filter_period}s (NOT APPLIED)")
+        print(f"[LOG] Filter period: {filter_period}s")
         print(f"[LOG] Current time: {current_time}")
         
-        # Show what files actually exist in the folder
+        # Create a temporary hidden folder for old files
+        hidden_folder = os.path.join(self.tempdrop_folder, '.hidden_old_files')
+        os.makedirs(hidden_folder, exist_ok=True)
+        
+        # Move old files to hidden folder, bring back recent files
         try:
             files_in_folder = os.listdir(self.tempdrop_folder)
-            print(f"[LOG] Files in TempDrop folder: {len(files_in_folder)}")
-            for file in files_in_folder:
+            files_to_process = [f for f in files_in_folder if not f.startswith('.')]
+            
+            print(f"[FILTER] Processing {len(files_to_process)} files...")
+            
+            for file in files_to_process:
                 file_path = os.path.join(self.tempdrop_folder, file)
+                hidden_path = os.path.join(hidden_folder, file)
+                
                 if os.path.isfile(file_path):
                     ctime = os.path.getctime(file_path)
                     age = current_time - ctime
                     should_show = age <= filter_period
-                    status = "✓ SHOULD SHOW" if should_show else "✗ SHOULD HIDE"
-                    print(f"[LOG]   {file}: age={age:.1f}s, {status}")
+                    
+                    if should_show:
+                        # File should be visible - make sure it's in main folder
+                        if not os.path.exists(file_path) and os.path.exists(hidden_path):
+                            os.rename(hidden_path, file_path)
+                            print(f"[FILTER] ✓ RESTORED: {file} (age: {age:.1f}s)")
+                        else:
+                            print(f"[FILTER] ✓ VISIBLE: {file} (age: {age:.1f}s)")
+                    else:
+                        # File should be hidden - move to hidden folder
+                        if os.path.exists(file_path):
+                            # Handle duplicates in hidden folder
+                            counter = 1
+                            final_hidden_path = hidden_path
+                            base_name, ext = os.path.splitext(file)
+                            while os.path.exists(final_hidden_path):
+                                new_name = f"{base_name}_{counter}{ext}"
+                                final_hidden_path = os.path.join(hidden_folder, new_name)
+                                counter += 1
+                            
+                            os.rename(file_path, final_hidden_path)
+                            print(f"[FILTER] ✗ HIDDEN: {file} (age: {age:.1f}s)")
+            
+            # Also check hidden folder for files that should now be visible
+            if os.path.exists(hidden_folder):
+                hidden_files = os.listdir(hidden_folder)
+                for hidden_file in hidden_files:
+                    hidden_file_path = os.path.join(hidden_folder, hidden_file)
+                    if os.path.isfile(hidden_file_path):
+                        ctime = os.path.getctime(hidden_file_path)
+                        age = current_time - ctime
+                        should_show = age <= filter_period
+                        
+                        if should_show:
+                            # Move back to main folder
+                            main_file_path = os.path.join(self.tempdrop_folder, hidden_file)
+                            if not os.path.exists(main_file_path):
+                                os.rename(hidden_file_path, main_file_path)
+                                print(f"[FILTER] ✓ RESTORED: {hidden_file} (age: {age:.1f}s)")
+                        
         except Exception as e:
-            print(f"[LOG] Error listing files: {e}")
+            print(f"[FILTER] Error applying filter: {e}")
         
-        print(f"💥 ALL FILES VISIBLE (no filtering active)")
+        # Refresh the view to show changes
+        self.model.setRootPath("")
+        self.model.setRootPath(self.tempdrop_folder)
         
-        # Show what's actually visible
+        # Show what's actually visible now
         self.debug_visible_items()
-        print()
+        print(f"🔍 FILTER APPLICATION COMPLETE\n")
     
     def debug_visible_items(self):
         """Debug function to show what items are actually visible in the view."""
