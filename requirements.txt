@@ -1,0 +1,4 @@
+tkinter
+watchdog==3.0.0
+pillow==10.0.1
+tkinterdnd2==0.3.0 

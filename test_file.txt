@@ -1,0 +1,2 @@
+This is a test file for TempDrop.
+You can drag this file into the TempDrop widget to see how it works! 
