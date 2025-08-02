@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QFileIconProvider, QSystemTrayIcon, QStyle, QInputDialog
 )
 from PyQt6.QtCore import (
-    Qt, QSize, QPoint, QRect, QFileSystemWatcher, QSortFilterProxyModel, QTimer
+    Qt, QSize, QPoint, QRect, QFileSystemWatcher, QSortFilterProxyModel, QTimer, QDir
 )
 from PyQt6.QtGui import (
     QFileSystemModel, QIcon, QAction, QMouseEvent, QKeyEvent, QKeySequence
@@ -261,13 +261,14 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath(self.tempdrop_folder)
         self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
         
-        # Create a proxy model for filtering
-        self.proxy_model = QSortFilterProxyModel()
-        self.proxy_model.setSourceModel(self.model)
-        self.proxy_model.setFilterKeyColumn(0)
+        print(f"[MODEL DEBUG] Model root path set to: {self.model.rootPath()}")
+        print(f"[MODEL DEBUG] TempDrop folder: {self.tempdrop_folder}")
         
-        self.view.setModel(self.proxy_model)
-        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
+        # FUCK THE PROXY MODEL - Let's just use the basic model for now
+        self.view.setModel(self.model)
+        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        
+        print(f"[MODEL DEBUG] Using basic model without filtering for now")
         
         self.watcher = QFileSystemWatcher([self.tempdrop_folder])
         self.watcher.directoryChanged.connect(self.directory_changed)
@@ -322,57 +323,69 @@ class DesktopWidget(ResizableFramelessWindow):
 
     def directory_changed(self):
         self.model.setRootPath(""); self.model.setRootPath(self.tempdrop_folder)
-        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
-        self.apply_file_filter()
+        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        print(f"[DIRECTORY] Directory changed, refreshed view")
         
     def apply_file_filter(self):
-        """Apply file filter based on modification time."""
+        """TEMPORARILY DISABLED - Just show all files for now."""
         import time
-        current_time = time.time()
+        import os
+        
         filter_period = self.config.get('filter_period', 86400)  # Default 1 day
+        current_time = time.time()
         
-        # Create a custom filter that checks modification time
-        class TimeFilterProxyModel(QSortFilterProxyModel):
-            def __init__(self, source_model, tempdrop_folder, filter_period, current_time):
-                super().__init__()
-                self.source_model = source_model
-                self.tempdrop_folder = tempdrop_folder
-                self.filter_period = filter_period
-                self.current_time = current_time
+        print(f"\n💥 FILTER DISABLED FOR DEBUGGING")
+        print(f"[LOG] TempDrop folder: {self.tempdrop_folder}")
+        print(f"[LOG] Filter period: {filter_period}s (NOT APPLIED)")
+        print(f"[LOG] Current time: {current_time}")
+        
+        # Show what files actually exist in the folder
+        try:
+            files_in_folder = os.listdir(self.tempdrop_folder)
+            print(f"[LOG] Files in TempDrop folder: {len(files_in_folder)}")
+            for file in files_in_folder:
+                file_path = os.path.join(self.tempdrop_folder, file)
+                if os.path.isfile(file_path):
+                    ctime = os.path.getctime(file_path)
+                    age = current_time - ctime
+                    should_show = age <= filter_period
+                    status = "✓ SHOULD SHOW" if should_show else "✗ SHOULD HIDE"
+                    print(f"[LOG]   {file}: age={age:.1f}s, {status}")
+        except Exception as e:
+            print(f"[LOG] Error listing files: {e}")
+        
+        print(f"💥 ALL FILES VISIBLE (no filtering active)")
+        
+        # Show what's actually visible
+        self.debug_visible_items()
+        print()
+    
+    def debug_visible_items(self):
+        """Debug function to show what items are actually visible in the view."""
+        try:
+            import os
+            
+            # Get root index for counting
+            root_index = self.view.rootIndex()
+            visible_count = self.model.rowCount(root_index)
+            
+            print(f"📋 VISIBLE ITEMS IN VIEW: {visible_count}")
+            
+            if visible_count == 0:
+                print("   (No items visible)")
+            else:
+                for row in range(visible_count):
+                    item_index = self.model.index(row, 0, root_index)
+                    file_path = self.model.filePath(item_index)
+                    file_name = os.path.basename(file_path)
+                    print(f"   {row + 1}. {file_name}")
                 
-            def filterAcceptsRow(self, source_row, source_parent):
-                source_index = self.source_model.index(source_row, 0, source_parent)
-                if not source_index.isValid():
-                    return False
-                    
-                file_path = self.source_model.filePath(source_index)
-                if not os.path.exists(file_path):
-                    return False
-                
-                # Only filter files within the TempDrop folder
-                if not file_path.startswith(self.tempdrop_folder):
-                    return True
-                    
-                # Get file modification time
-                try:
-                    mtime = os.path.getmtime(file_path)
-                    return (self.current_time - mtime) <= self.filter_period
-                except:
-                    return False
-        
-        # Create new proxy model with time filtering
-        self.proxy_model = TimeFilterProxyModel(self.model, self.tempdrop_folder, filter_period, current_time)
-        self.proxy_model.setSourceModel(self.model)
-        self.proxy_model.setFilterKeyColumn(0)
-        
-        # Update the view to use the new proxy model
-        self.view.setModel(self.proxy_model)
-        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.tempdrop_folder)))
+        except Exception as e:
+            print(f"[VIEW DEBUG] Error checking visible items: {e}")
     
     def open_item(self, index):
         try: 
-            source_index = self.proxy_model.mapToSource(index)
-            os.startfile(self.model.filePath(source_index))
+            os.startfile(self.model.filePath(index))
         except Exception as e: QMessageBox.warning(self, "Error", f"Could not open item:\n{e}")
             
     def show_context_menu(self, position):
@@ -405,7 +418,7 @@ class DesktopWidget(ResizableFramelessWindow):
         menu.exec(self.view.viewport().mapToGlobal(position))
 
     def delete_items(self, indexes):
-        paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
+        paths = [self.model.filePath(i) for i in indexes]
         reply = QMessageBox.question(self, "Confirm Delete", f"Permanently delete {len(paths)} item(s)?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
@@ -445,7 +458,7 @@ class DesktopWidget(ResizableFramelessWindow):
         filter_group = QGroupBox("File Filtering")
         filter_layout = QVBoxLayout(filter_group)
         
-        filter_label = QLabel("Show files modified within:")
+        filter_label = QLabel("Show files added to TempDrop within:")
         filter_layout.addWidget(filter_label)
         
         self.filter_combo = QComboBox()
@@ -469,7 +482,7 @@ class DesktopWidget(ResizableFramelessWindow):
         delete_group = QGroupBox("Auto-Cleanup")
         delete_layout = QVBoxLayout(delete_group)
         
-        self.auto_delete_checkbox = QCheckBox("Also delete files after this period")
+        self.auto_delete_checkbox = QCheckBox("Also delete files after they've been in TempDrop for this period")
         self.auto_delete_checkbox.setChecked(self.config.get('auto_delete', False))
         self.auto_delete_checkbox.stateChanged.connect(self.on_auto_delete_changed)
         delete_layout.addWidget(self.auto_delete_checkbox)
@@ -497,9 +510,20 @@ class DesktopWidget(ResizableFramelessWindow):
         
     def on_filter_changed(self):
         """Handle filter period change."""
-        self.config['filter_period'] = self.filter_combo.currentData()
+        old_period = self.config.get('filter_period', 86400)
+        new_period = self.filter_combo.currentData()
+        
+        print(f"\n🔄 FILTER SETTING CHANGED!")
+        print(f"   Old period: {old_period}s")
+        print(f"   New period: {new_period}s")
+        print(f"   Change: {old_period} → {new_period}")
+        
+        self.config['filter_period'] = new_period
         self.save_config()
+        
+        print(f"   Config saved, applying filter...")
         self.apply_file_filter()
+        print(f"   Filter change complete!\n")
         
     def on_auto_delete_changed(self):
         """Handle auto-delete checkbox change."""
@@ -564,6 +588,15 @@ class DesktopWidget(ResizableFramelessWindow):
                     counter += 1
                 
                 shutil.move(source_path, target_path)
+                
+                # Log when file is added for debugging
+                import time
+                current_time = time.time()
+                print(f"🗂️ FILE ADDED TO TEMPDROP via drag/drop:")
+                print(f"   File: {filename}")
+                print(f"   Time: {current_time}")
+                print(f"   Path: {target_path}")
+                
             except Exception as e:
                 QMessageBox.warning(self, "Move Error", f"Could not move file:\n{e}")
 
@@ -658,7 +691,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def copy_items(self, indexes):
         """Copy items to clipboard."""
         try:
-            paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
+            paths = [self.model.filePath(i) for i in indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -669,7 +702,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def cut_items(self, indexes):
         """Cut items to clipboard."""
         try:
-            paths = [self.model.filePath(self.proxy_model.mapToSource(i)) for i in indexes]
+            paths = [self.model.filePath(i) for i in indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -712,8 +745,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def open_with_dialog(self, index):
         """Open file with default application dialog."""
         try:
-            source_index = self.proxy_model.mapToSource(index)
-            file_path = self.model.filePath(source_index)
+            file_path = self.model.filePath(index)
             os.startfile(file_path)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not open file:\n{e}")
@@ -721,8 +753,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def rename_item(self, index):
         """Rename the selected item."""
         try:
-            source_index = self.proxy_model.mapToSource(index)
-            file_path = self.model.filePath(source_index)
+            file_path = self.model.filePath(index)
             filename = os.path.basename(file_path)
             new_name, ok = QInputDialog.getText(self, "Rename", "Enter new name:", text=filename)
             if ok and new_name and new_name != filename:
@@ -737,8 +768,7 @@ class DesktopWidget(ResizableFramelessWindow):
     def show_properties(self, index):
         """Show file properties dialog."""
         try:
-            source_index = self.proxy_model.mapToSource(index)
-            file_path = self.model.filePath(source_index)
+            file_path = self.model.filePath(index)
             subprocess.Popen(['explorer', '/select,', file_path])
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not show properties:\n{e}")
@@ -761,8 +791,9 @@ class DesktopWidget(ResizableFramelessWindow):
                 item_path = os.path.join(self.tempdrop_folder, item)
                 if os.path.exists(item_path):
                     try:
-                        mtime = os.path.getmtime(item_path)
-                        if (current_time - mtime) > filter_period:
+                        # Use creation time to match the filtering logic
+                        ctime = os.path.getctime(item_path)
+                        if (current_time - ctime) > filter_period:
                             if os.path.isfile(item_path):
                                 os.remove(item_path)
                             elif os.path.isdir(item_path):
