@@ -50,6 +50,6 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# TempDrop specific
-tempdrop_config.json
-TempDrop/ 
+# TempDesk specific
+TempDesk_config.json
+TempDesk/ 

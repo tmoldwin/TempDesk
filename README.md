@@ -1,10 +1,10 @@
-# TempDrop - Desktop Widget
+# TempDesk - Desktop Widget
 
-## What is TempDrop?
+## What is TempDesk?
 
-TempDrop is a desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
+TempDesk is a desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
 
-TempDrop gives you a transparent window on your desktop where you can store these temporary files. They automatically get deleted after a few days, keeping your desktop clean.
+TempDesk gives you a transparent window on your desktop where you can store these temporary files. They automatically get deleted after a few days, keeping your desktop clean.
 
 ## Features
 
@@ -22,7 +22,7 @@ TempDrop gives you a transparent window on your desktop where you can store thes
 ### Windows (Recommended)
 
 1. **Download and extract** the project
-2. **Double-click `run.bat`** to start TempDrop
+2. **Double-click `run.bat`** to start TempDesk
 3. **Drag files** into the transparent widget on your desktop
 4. **Configure settings** by clicking the gear icon (⚙)
 
@@ -39,7 +39,7 @@ TempDrop gives you a transparent window on your desktop where you can store thes
    ```
 4. **Run the application**:
    ```bash
-   python tempdrop.py
+   python TempDesk.py
    ```
 
 ### Build Executable
@@ -66,8 +66,8 @@ The executable will be created in the `dist/` folder.
 - It doesn't appear in your taskbar or Alt-Tab list - it's just part of your desktop
 
 ### Adding Files
-- **Drag and Drop**: Simply drag any file from your computer into the TempDrop window
-- **Auto-Detection**: If you save files directly to the TempDrop folder, they automatically appear in the widget
+- **Drag and Drop**: Simply drag any file from your computer into the TempDesk window
+- **Auto-Detection**: If you save files directly to the TempDesk folder, they automatically appear in the widget
 
 ### File Display
 Files appear as desktop shortcuts/icons (not a boring file list):
@@ -86,7 +86,7 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Move**: Drag anywhere on the window to move it around
 - **Close**: Click the X button to close the widget
 - **Settings**: Click the gear icon (⚙) to change auto-deletion time, storage folder, etc.
-- **Open Folder**: Click the folder icon (📁) to open the TempDrop storage folder directly
+- **Open Folder**: Click the folder icon (📁) to open the TempDesk storage folder directly
 
 ### Settings
 - **Auto-deletion**: Set how many days before files are automatically deleted (1-30 days)
@@ -94,8 +94,8 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 
 ## User Experience Flow
 
-1. **Start**: Run TempDrop - a transparent window appears on your desktop
-2. **Add Files**: Drag files into the window or save them to the TempDrop folder
+1. **Start**: Run TempDesk - a transparent window appears on your desktop
+2. **Add Files**: Drag files into the window or save them to the TempDesk folder
 3. **See Files**: Files appear as desktop-style icons in the widget
 4. **Use Files**: Double-click to open, right-click for more options
 5. **Auto-Cleanup**: Files automatically disappear after your set time period
@@ -133,16 +133,16 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Linux**: Full support with file dialog fallback
 
 ### File Storage
-- **Windows**: `C:\Users\YourName\TempDrop`
-- **macOS**: `/Users/YourName/TempDrop`
-- **Linux**: `/home/YourName/TempDrop`
+- **Windows**: `C:\Users\YourName\TempDesk`
+- **macOS**: `/Users/YourName/TempDesk`
+- **Linux**: `/home/YourName/TempDesk`
 
 ## Getting Started
 
-1. Download and install TempDrop
+1. Download and install TempDesk
 2. The widget appears on your desktop automatically
 3. Start dragging files into it
 4. Configure settings to your preference
 5. Enjoy a cleaner desktop!
 
-That's it - TempDrop works in the background, keeping your desktop organized without you having to think about it. 
+That's it - TempDesk works in the background, keeping your desktop organized without you having to think about it. 

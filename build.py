@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script for TempDrop
+Build script for TempDesk
 Creates a standalone executable using PyInstaller.
 """
 
@@ -11,8 +11,8 @@ import shutil
 from pathlib import Path
 
 def main():
-    """Build the TempDrop executable."""
-    print("Building TempDrop executable...")
+    """Build the TempDesk executable."""
+    print("Building TempDesk executable...")
     
     # Install PyInstaller if not already installed
     try:
@@ -31,18 +31,18 @@ def main():
         "pyinstaller",
         "--onefile",
         "--windowed",
-        "--name=TempDrop",
+        "--name=TempDesk",
         "--add-data=icons;icons",
         "--icon=icons/file.png",
-        "tempdrop.py"
+        "TempDesk.py"
     ]
     
     print("Running PyInstaller...")
     subprocess.check_call(cmd)
     
     print("\nBuild completed!")
-    print("Executable created in: dist/TempDrop.exe")
-    print("\nYou can now run TempDrop by double-clicking the executable.")
+    print("Executable created in: dist/TempDesk.exe")
+    print("\nYou can now run TempDesk by double-clicking the executable.")
 
 if __name__ == "__main__":
     main() 

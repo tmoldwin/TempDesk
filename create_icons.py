@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Icon generator for TempDrop
+Icon generator for TempDesk
 Creates basic colored rectangle icons for different file types.
 """
 

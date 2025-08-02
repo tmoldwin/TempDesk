@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Code\\Tempdrop\\TempDrop.csproj": {}
+    "C:\\Code\\TempDesk\\TempDesk.csproj": {}
   },
   "projects": {
-    "C:\\Code\\Tempdrop\\TempDrop.csproj": {
+    "C:\\Code\\TempDesk\\TempDesk.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Code\\Tempdrop\\TempDrop.csproj",
-        "projectName": "TempDrop",
-        "projectPath": "C:\\Code\\Tempdrop\\TempDrop.csproj",
+        "projectUniqueName": "C:\\Code\\TempDesk\\TempDesk.csproj",
+        "projectName": "TempDesk",
+        "projectPath": "C:\\Code\\TempDesk\\TempDesk.csproj",
         "packagesPath": "C:\\Users\\tmold\\.nuget\\packages\\",
-        "outputPath": "C:\\Code\\Tempdrop\\obj\\",
+        "outputPath": "C:\\Code\\TempDesk\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\tmold\\AppData\\Roaming\\NuGet\\NuGet.Config"

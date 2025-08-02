@@ -6,16 +6,16 @@ using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.Diagnostics;
 
-namespace TempDrop
+namespace TempDesk
 {
-    public partial class TempDropForm : Form
+    public partial class TempDeskForm : Form
     {
         private string tempFolder = "";
         private System.Windows.Forms.Timer? cleanupTimer;
         private int autoDeleteDays = 7;
         private ListView? fileListView;
 
-        public TempDropForm()
+        public TempDeskForm()
         {
             LoadConfig();
             SetupForm();
@@ -24,7 +24,7 @@ namespace TempDrop
 
         private void LoadConfig()
         {
-            string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tempdrop_config.json");
+            string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TempDesk_config.json");
             if (File.Exists(configPath))
             {
                 try
@@ -50,13 +50,13 @@ namespace TempDrop
             
             if (string.IsNullOrEmpty(tempFolder))
             {
-                tempFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "TempDrop");
+                tempFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "TempDesk");
             }
         }
 
         private void SaveConfig()
         {
-            string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tempdrop_config.json");
+            string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TempDesk_config.json");
             string json = $"{{\n  \"temp_folder\": \"{tempFolder}\",\n  \"auto_delete_days\": {autoDeleteDays}\n}}";
             try
             {
@@ -70,7 +70,7 @@ namespace TempDrop
 
         private void SetupForm()
         {
-            this.Text = "TempDrop";
+            this.Text = "TempDesk";
             this.Size = new Size(800, 500);
             this.MinimumSize = new Size(600, 400);
             this.StartPosition = FormStartPosition.Manual;
@@ -95,7 +95,7 @@ namespace TempDrop
 
             Label titleLabel = new Label
             {
-                Text = "TempDrop",
+                Text = "TempDesk",
                 Font = new Font("Arial", 12, FontStyle.Bold),
                 Location = new Point(10, 10),
                 AutoSize = true
@@ -144,7 +144,7 @@ namespace TempDrop
         {
             trayMenu = new ContextMenuStrip();
             
-            var showItem = new ToolStripMenuItem("Show TempDrop");
+            var showItem = new ToolStripMenuItem("Show TempDesk");
             showItem.Click += (s, e) => ShowFromTray();
             trayMenu.Items.Add(showItem);
             
@@ -170,7 +170,7 @@ namespace TempDrop
 
             trayIcon = new NotifyIcon();
             trayIcon.Icon = SystemIcons.Application;
-            trayIcon.Text = "TempDrop";
+            trayIcon.Text = "TempDesk";
             trayIcon.ContextMenuStrip = trayMenu;
             trayIcon.Visible = true;
             trayIcon.DoubleClick += (s, e) => ShowFromTray();
@@ -179,7 +179,7 @@ namespace TempDrop
         private void MinimizeToTray()
         {
             this.Hide();
-            trayIcon.ShowBalloonTip(1000, "TempDrop", "Minimized to tray", ToolTipIcon.Info);
+            trayIcon.ShowBalloonTip(1000, "TempDesk", "Minimized to tray", ToolTipIcon.Info);
         }
 
         private void ShowFromTray()
@@ -457,7 +457,7 @@ namespace TempDrop
             using (var dialog = new OpenFileDialog())
             {
                 dialog.Multiselect = true;
-                dialog.Title = "Add Files to TempDrop";
+                dialog.Title = "Add Files to TempDesk";
                 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
@@ -515,7 +515,7 @@ namespace TempDrop
         {
             using (var form = new Form())
             {
-                form.Text = "TempDrop Settings";
+                form.Text = "TempDesk Settings";
                 form.Size = new Size(500, 300);
                 form.StartPosition = FormStartPosition.CenterParent;
                 form.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -649,7 +649,7 @@ namespace TempDrop
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new TempDropForm());
+            Application.Run(new TempDeskForm());
         }
     }
 } 

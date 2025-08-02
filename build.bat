@@ -1,5 +1,5 @@
 @echo off
-echo Building TempDrop...
+echo Building TempDesk...
 
 REM Check if .NET is installed
 dotnet --version >nul 2>&1
@@ -19,7 +19,7 @@ if errorlevel 1 (
 )
 
 echo Build successful!
-echo Running TempDrop...
+echo Running TempDesk...
 
 REM Run the application
 dotnet run --configuration Release

@@ -10,12 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("TempDrop")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("TempDesk")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
 [assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+52e096da4c2e74abca8eaf703157fe9332b77df9")]
-[assembly: System.Reflection.AssemblyProductAttribute("TempDrop")]
-[assembly: System.Reflection.AssemblyTitleAttribute("TempDrop")]
+[assembly: System.Reflection.AssemblyProductAttribute("TempDesk")]
+[assembly: System.Reflection.AssemblyTitleAttribute("TempDesk")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows7.0")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("Windows7.0")]

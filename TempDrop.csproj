@@ -6,7 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
-    <AssemblyTitle>TempDrop</AssemblyTitle>
+    <AssemblyTitle>TempDesk</AssemblyTitle>
     <AssemblyDescription>Simple desktop widget for temporary file management</AssemblyDescription>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>

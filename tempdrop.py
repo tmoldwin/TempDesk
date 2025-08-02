@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TempDrop - A true desktop file explorer widget with system tray integration.
+TempDesk - A true desktop file explorer widget with system tray integration.
 """
 
 import sys
@@ -120,10 +120,10 @@ class DesktopWidget(ResizableFramelessWindow):
     def __init__(self):
         super().__init__()
         self.config = self.load_config()
-        self.tempdrop_folder = self.get_tempdrop_folder()
+        self.TempDesk_folder = self.get_TempDesk_folder()
         self.is_dragging = False
 
-        os.makedirs(self.tempdrop_folder, exist_ok=True)
+        os.makedirs(self.TempDesk_folder, exist_ok=True)
         
         # Drag and drop is handled by the view, not the main window
         # self.setAcceptDrops(True)
@@ -132,17 +132,19 @@ class DesktopWidget(ResizableFramelessWindow):
         self.setup_file_system_model()
         self.pin_to_desktop()
         
-    def get_tempdrop_folder(self) -> str:
-        return str(Path.home() / 'TempDrop')
+    def get_TempDesk_folder(self) -> str:
+        return str(Path.home() / 'TempDesk')
     
     def load_config(self) -> dict:
-        config_path = Path.home() / '.tempdrop_config.json'
+        config_path = Path.home() / '.TempDesk_config.json'
+        old_config_path = Path.home() / '.tempdrop_config.json'
         default_config = {
             'filter_period': 86400,  # 1 day in seconds
             'auto_delete': False,
             'window_geometry': None
         }
         
+        # Try to load from new config file first
         if config_path.exists():
             try:
                 with open(config_path, 'r') as f:
@@ -153,11 +155,34 @@ class DesktopWidget(ResizableFramelessWindow):
                             loaded_config[key] = value
                     return loaded_config
             except json.JSONDecodeError:
-                return default_config
+                pass
+        
+        # If new config doesn't exist, try to migrate from old config
+        if old_config_path.exists():
+            try:
+                with open(old_config_path, 'r') as f:
+                    loaded_config = json.load(f)
+                    # Merge with defaults to ensure all keys exist
+                    for key, value in default_config.items():
+                        if key not in loaded_config:
+                            loaded_config[key] = value
+                    
+                    # Save to new config file
+                    try:
+                        with open(config_path, 'w') as f:
+                            json.dump(loaded_config, f, indent=2)
+                        print(f"Migrated config from {old_config_path} to {config_path}")
+                    except Exception as e:
+                        print(f"Warning: Could not save migrated config: {e}")
+                    
+                    return loaded_config
+            except json.JSONDecodeError:
+                pass
+        
         return default_config
     
     def save_config(self):
-        config_path = Path.home() / '.tempdrop_config.json'
+        config_path = Path.home() / '.TempDesk_config.json'
         config = {
             'window_geometry': self.saveGeometry().data().hex(),
             'filter_period': self.config.get('filter_period', 86400),
@@ -168,7 +193,7 @@ class DesktopWidget(ResizableFramelessWindow):
         except Exception as e: print(f"Error saving config: {e}")
     
     def setup_ui(self):
-        self.setWindowTitle("TempDrop")
+        self.setWindowTitle("TempDesk")
         self.setMinimumSize(300, 200)
         
         central_widget = QWidget(self)
@@ -225,7 +250,7 @@ class DesktopWidget(ResizableFramelessWindow):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 0, 5, 0)
         
-        title_label = QLabel("📁 TempDrop")
+        title_label = QLabel("📁 TempDesk")
         title_label.setStyleSheet("color: white; font-weight: bold;")
         
         settings_btn = QPushButton("⚙️")
@@ -246,8 +271,14 @@ class DesktopWidget(ResizableFramelessWindow):
         return title_bar
 
     def setup_window_properties(self):
-        if 'window_geometry' in self.config:
-            self.restoreGeometry(bytes.fromhex(self.config['window_geometry']))
+        if 'window_geometry' in self.config and self.config['window_geometry'] is not None:
+            try:
+                self.restoreGeometry(bytes.fromhex(self.config['window_geometry']))
+            except (ValueError, TypeError):
+                # If geometry restoration fails, use default position
+                screen = QApplication.primaryScreen().geometry()
+                self.resize(500, 350)
+                self.move(screen.width() - self.width() - 20, 40)
         else:
             screen = QApplication.primaryScreen().geometry()
             self.resize(500, 350)
@@ -258,21 +289,21 @@ class DesktopWidget(ResizableFramelessWindow):
     
     def setup_file_system_model(self):
         self.model = QFileSystemModel()
-        self.model.setRootPath(self.tempdrop_folder)
+        self.model.setRootPath(self.TempDesk_folder)
         self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
         
         # Filter to only show files (not directories like "old")
         self.model.setFilter(QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
         
         print(f"[MODEL DEBUG] Model root path set to: {self.model.rootPath()}")
-        print(f"[MODEL DEBUG] TempDrop folder: {self.tempdrop_folder}")
+        print(f"[MODEL DEBUG] TempDesk folder: {self.TempDesk_folder}")
         
         self.view.setModel(self.model)
-        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
         
         print(f"[MODEL DEBUG] Using basic model with files-only filter")
         
-        self.watcher = QFileSystemWatcher([self.tempdrop_folder])
+        self.watcher = QFileSystemWatcher([self.TempDesk_folder])
         self.watcher.directoryChanged.connect(self.directory_changed)
         
         # Setup auto-cleanup timer
@@ -329,8 +360,8 @@ class DesktopWidget(ResizableFramelessWindow):
             # Continue without pinning to desktop
 
     def directory_changed(self):
-        self.model.setRootPath(""); self.model.setRootPath(self.tempdrop_folder)
-        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        self.model.setRootPath(""); self.model.setRootPath(self.TempDesk_folder)
+        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
         print(f"[DIRECTORY] Directory changed, refreshed view")
     
     def periodic_refresh(self):
@@ -339,8 +370,8 @@ class DesktopWidget(ResizableFramelessWindow):
         
         # Force refresh the file system model
         self.model.setRootPath("")
-        self.model.setRootPath(self.tempdrop_folder)
-        self.view.setRootIndex(self.model.index(self.tempdrop_folder))
+        self.model.setRootPath(self.TempDesk_folder)
+        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
         
         # Reapply the filter to make sure everything is correct
         self.apply_file_filter()
@@ -356,31 +387,31 @@ class DesktopWidget(ResizableFramelessWindow):
         current_time = time.time()
         
         print(f"\n🔍 APPLYING WORKING FILTER")
-        print(f"[LOG] TempDrop folder: {self.tempdrop_folder}")
+        print(f"[LOG] TempDesk folder: {self.TempDesk_folder}")
         print(f"[LOG] Filter period: {filter_period}s")
         print(f"[LOG] Current time: {current_time}")
         
         # Create a folder for old files (excluded from view)
-        hidden_folder = os.path.join(self.tempdrop_folder, 'old')
+        hidden_folder = os.path.join(self.TempDesk_folder, 'old')
         os.makedirs(hidden_folder, exist_ok=True)
         
         # Move old files to hidden folder, bring back recent files
         try:
-            files_in_folder = os.listdir(self.tempdrop_folder)
+            files_in_folder = os.listdir(self.TempDesk_folder)
             files_to_process = [f for f in files_in_folder if not f.startswith('.') and f != 'old']
             
             print(f"[FILTER] Processing {len(files_to_process)} files...")
             
             for file in files_to_process:
-                file_path = os.path.join(self.tempdrop_folder, file)
+                file_path = os.path.join(self.TempDesk_folder, file)
                 hidden_path = os.path.join(hidden_folder, file)
                 
                 if os.path.isfile(file_path):
-                    # Get file creation time in this folder (when it was added to TempDrop)
+                    # Get file creation time in this folder (when it was added to TempDesk)
                     # Note: os.path.getctime() returns when file was created in this location,
                     # which is when it was dragged/copied/moved here
                     ctime = os.path.getctime(file_path)
-                    age = current_time - ctime  # Age in seconds since added to TempDrop
+                    age = current_time - ctime  # Age in seconds since added to TempDesk
                     should_show = age <= filter_period
                     
                     if should_show:
@@ -417,7 +448,7 @@ class DesktopWidget(ResizableFramelessWindow):
                         
                         if should_show:
                             # Move back to main folder
-                            main_file_path = os.path.join(self.tempdrop_folder, hidden_file)
+                            main_file_path = os.path.join(self.TempDesk_folder, hidden_file)
                             if not os.path.exists(main_file_path):
                                 os.rename(hidden_file_path, main_file_path)
                                 print(f"[FILTER] ✓ RESTORED: {hidden_file} (age: {age:.1f}s)")
@@ -427,7 +458,7 @@ class DesktopWidget(ResizableFramelessWindow):
         
         # Refresh the view to show changes
         self.model.setRootPath("")
-        self.model.setRootPath(self.tempdrop_folder)
+        self.model.setRootPath(self.TempDesk_folder)
         
         # Show what's actually visible now
         self.debug_visible_items()
@@ -513,17 +544,17 @@ class DesktopWidget(ResizableFramelessWindow):
             
             # Refresh the file system model to show changes immediately
             self.model.setRootPath("")
-            self.model.setRootPath(self.tempdrop_folder)
+            self.model.setRootPath(self.TempDesk_folder)
 
     def show_in_explorer(self):
-        subprocess.Popen(f'explorer "{self.tempdrop_folder}"')
+        subprocess.Popen(f'explorer "{self.TempDesk_folder}"')
         
     def show_settings_dialog(self):
         """Show the settings dialog with filtering and deletion options."""
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox, QPushButton, QGroupBox
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("TempDrop Settings")
+        dialog.setWindowTitle("TempDesk Settings")
         dialog.setFixedSize(400, 300)
         
         layout = QVBoxLayout(dialog)
@@ -531,7 +562,7 @@ class DesktopWidget(ResizableFramelessWindow):
         # Folder section
         folder_group = QGroupBox("Storage Location")
         folder_layout = QVBoxLayout(folder_group)
-        folder_label = QLabel(f"TempDrop Folder: {self.tempdrop_folder}")
+        folder_label = QLabel(f"TempDesk Folder: {self.TempDesk_folder}")
         folder_layout.addWidget(folder_label)
         
         folder_buttons = QHBoxLayout()
@@ -545,7 +576,7 @@ class DesktopWidget(ResizableFramelessWindow):
         filter_group = QGroupBox("File Filtering")
         filter_layout = QVBoxLayout(filter_group)
         
-        filter_label = QLabel("Show files added to TempDrop within:")
+        filter_label = QLabel("Show files added to TempDesk within:")
         filter_layout.addWidget(filter_label)
         
         self.filter_combo = QComboBox()
@@ -569,7 +600,7 @@ class DesktopWidget(ResizableFramelessWindow):
         delete_group = QGroupBox("Auto-Cleanup")
         delete_layout = QVBoxLayout(delete_group)
         
-        self.auto_delete_checkbox = QCheckBox("Also delete files after they've been in TempDrop for this period")
+        self.auto_delete_checkbox = QCheckBox("Also delete files after they've been in TempDesk for this period")
         self.auto_delete_checkbox.setChecked(self.config.get('auto_delete', False))
         self.auto_delete_checkbox.stateChanged.connect(self.on_auto_delete_changed)
         delete_layout.addWidget(self.auto_delete_checkbox)
@@ -582,7 +613,7 @@ class DesktopWidget(ResizableFramelessWindow):
         # Buttons
         button_layout = QHBoxLayout()
         clear_btn = QPushButton("Clear All Items...")
-        clear_btn.clicked.connect(self.clear_tempdrop_folder)
+        clear_btn.clicked.connect(self.clear_TempDesk_folder)
         button_layout.addWidget(clear_btn)
         
         button_layout.addStretch()
@@ -617,13 +648,13 @@ class DesktopWidget(ResizableFramelessWindow):
         self.config['auto_delete'] = self.auto_delete_checkbox.isChecked()
         self.save_config()
         
-    def clear_tempdrop_folder(self):
-        reply = QMessageBox.warning(self, "Confirm Clear", "Permanently delete ALL items in TempDrop?",
+    def clear_TempDesk_folder(self):
+        reply = QMessageBox.warning(self, "Confirm Clear", "Permanently delete ALL items in TempDesk?",
                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
         if reply == QMessageBox.StandardButton.Yes:
-            for item in os.listdir(self.tempdrop_folder):
+            for item in os.listdir(self.TempDesk_folder):
                 try:
-                    item_path = os.path.join(self.tempdrop_folder, item)
+                    item_path = os.path.join(self.TempDesk_folder, item)
                     if os.path.isfile(item_path): os.unlink(item_path)
                     elif os.path.isdir(item_path): shutil.rmtree(item_path)
                 except Exception as e: print(f"Failed to delete {item_path}: {e}")
@@ -664,14 +695,14 @@ class DesktopWidget(ResizableFramelessWindow):
             try:
                 source_path = url.toLocalFile()
                 filename = os.path.basename(source_path)
-                target_path = os.path.join(self.tempdrop_folder, filename)
+                target_path = os.path.join(self.TempDesk_folder, filename)
                 
                 # Handle duplicate filenames
                 counter = 1
                 base_name, ext = os.path.splitext(filename)
                 while os.path.exists(target_path):
                     new_filename = f"{base_name}_{counter}{ext}"
-                    target_path = os.path.join(self.tempdrop_folder, new_filename)
+                    target_path = os.path.join(self.TempDesk_folder, new_filename)
                     counter += 1
                 
                 shutil.move(source_path, target_path)
@@ -679,7 +710,7 @@ class DesktopWidget(ResizableFramelessWindow):
                 # Log when file is added for debugging
                 import time
                 current_time = time.time()
-                print(f"🗂️ FILE ADDED TO TEMPDROP via drag/drop:")
+                print(f"🗂️ FILE ADDED TO TempDesk via drag/drop:")
                 print(f"   File: {filename}")
                 print(f"   Time: {current_time}")
                 print(f"   Path: {target_path}")
@@ -719,14 +750,14 @@ class DesktopWidget(ResizableFramelessWindow):
             try:
                 source_path = url.toLocalFile()
                 filename = os.path.basename(source_path)
-                target_path = os.path.join(self.tempdrop_folder, filename)
+                target_path = os.path.join(self.TempDesk_folder, filename)
                 
                 # Handle duplicate filenames
                 counter = 1
                 base_name, ext = os.path.splitext(filename)
                 while os.path.exists(target_path):
                     new_filename = f"{base_name}_{counter}{ext}"
-                    target_path = os.path.join(self.tempdrop_folder, new_filename)
+                    target_path = os.path.join(self.TempDesk_folder, new_filename)
                     counter += 1
                 
                 # Use native Windows cut/paste operation
@@ -800,7 +831,7 @@ class DesktopWidget(ResizableFramelessWindow):
                 
                 # Log when file is added for debugging - this sets the creation time
                 import time
-                print(f"🗂️ FILE ADDED TO TEMPDROP via drag/drop:")
+                print(f"🗂️ FILE ADDED TO TempDesk via drag/drop:")
                 print(f"   File: {filename}")
                 print(f"   Time: {time.time()}")
                 print(f"   Path: {target_path}")
@@ -810,7 +841,7 @@ class DesktopWidget(ResizableFramelessWindow):
         
         # Refresh the file system model to show changes immediately
         self.model.setRootPath("")
-        self.model.setRootPath(self.tempdrop_folder)
+        self.model.setRootPath(self.TempDesk_folder)
 
     def view_key_press_event(self, event: QKeyEvent):
         """Handle keyboard shortcuts for the view."""
@@ -889,14 +920,14 @@ class DesktopWidget(ResizableFramelessWindow):
                     source_path = url.toLocalFile()
                     if os.path.exists(source_path):
                         filename = os.path.basename(source_path)
-                        target_path = os.path.join(self.tempdrop_folder, filename)
+                        target_path = os.path.join(self.TempDesk_folder, filename)
                         
                         # Handle duplicate filenames
                         counter = 1
                         base_name, ext = os.path.splitext(filename)
                         while os.path.exists(target_path):
                             new_filename = f"{base_name}_{counter}{ext}"
-                            target_path = os.path.join(self.tempdrop_folder, new_filename)
+                            target_path = os.path.join(self.TempDesk_folder, new_filename)
                             counter += 1
                         
                         # Check if this was a cut operation
@@ -916,7 +947,7 @@ class DesktopWidget(ResizableFramelessWindow):
                 
                 # Refresh the file system model to show changes immediately
                 self.model.setRootPath("")
-                self.model.setRootPath(self.tempdrop_folder)
+                self.model.setRootPath(self.TempDesk_folder)
                             
         except Exception as e:
             QMessageBox.warning(self, "Paste Error", f"Could not paste items:\n{e}")
@@ -966,8 +997,8 @@ class DesktopWidget(ResizableFramelessWindow):
         filter_period = self.config.get('filter_period', 86400)
         
         try:
-            for item in os.listdir(self.tempdrop_folder):
-                item_path = os.path.join(self.tempdrop_folder, item)
+            for item in os.listdir(self.TempDesk_folder):
+                item_path = os.path.join(self.TempDesk_folder, item)
                 if os.path.exists(item_path):
                     try:
                         # Use creation time to match the filtering logic
@@ -993,7 +1024,7 @@ def main():
 
     # --- System Tray Icon Setup ---
     tray_icon = QSystemTrayIcon(QIcon(app.style().standardPixmap(QStyle.StandardPixmap.SP_DriveHDIcon)), parent=app)
-    tray_icon.setToolTip("TempDrop")
+    tray_icon.setToolTip("TempDesk")
     
     def toggle_visibility():
         widget.setVisible(not widget.isVisible())
@@ -1005,7 +1036,7 @@ def main():
     tray_icon.activated.connect(tray_activated)
 
     tray_menu = QMenu()
-    tray_menu.addAction("Show/Hide TempDrop", toggle_visibility)
+    tray_menu.addAction("Show/Hide TempDesk", toggle_visibility)
     tray_menu.addSeparator()
     tray_menu.addAction("Quit", app.quit)
     tray_icon.setContextMenu(tray_menu)

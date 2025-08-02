@@ -1,5 +1,5 @@
 @echo off
-echo Starting TempDrop...
+echo Starting TempDesk...
 echo.
 
 REM Check if Python is installed
@@ -31,8 +31,8 @@ if not exist "icons" (
     python create_icons.py
 )
 
-REM Run TempDrop
-echo Starting TempDrop application...
-python tempdrop.py
+REM Run TempDesk
+echo Starting TempDesk application...
+python TempDesk.py
 
 pause 

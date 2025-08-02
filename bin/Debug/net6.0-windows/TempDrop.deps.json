@@ -6,15 +6,15 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v6.0": {
-      "TempDrop/1.0.0": {
+      "TempDesk/1.0.0": {
         "runtime": {
-          "TempDrop.dll": {}
+          "TempDesk.dll": {}
         }
       }
     }
   },
   "libraries": {
-    "TempDrop/1.0.0": {
+    "TempDesk/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
