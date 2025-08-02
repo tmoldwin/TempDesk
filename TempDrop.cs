@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
+using System.Diagnostics;
 
 namespace TempDrop
 {
@@ -64,6 +65,9 @@ namespace TempDrop
             catch { }
         }
 
+        private NotifyIcon trayIcon;
+        private ContextMenuStrip trayMenu;
+
         private void SetupForm()
         {
             this.Text = "TempDrop";
@@ -72,6 +76,11 @@ namespace TempDrop
             this.TopMost = true;
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(Screen.PrimaryScreen.WorkingArea.Width - this.Width - 20, 100);
+            this.ShowInTaskbar = false;
+            this.WindowState = FormWindowState.Minimized;
+
+            // Create tray icon
+            CreateTrayIcon();
 
             // Create toolbar
             Panel toolbar = new Panel
@@ -97,61 +106,117 @@ namespace TempDrop
             };
             openFolderBtn.Click += (s, e) => OpenTempFolder();
 
+            Button addFilesBtn = new Button
+            {
+                Text = "📄 Add Files",
+                Location = new Point(310, 8),
+                Size = new Size(80, 25)
+            };
+            addFilesBtn.Click += (s, e) => ShowAddFilesDialog();
+
             Button settingsBtn = new Button
             {
                 Text = "⚙ Settings",
-                Location = new Point(310, 8),
+                Location = new Point(400, 8),
                 Size = new Size(80, 25)
             };
             settingsBtn.Click += (s, e) => ShowSettings();
 
-            Button closeBtn = new Button
+            Button minimizeBtn = new Button
             {
-                Text = "× Close",
-                Location = new Point(400, 8),
-                Size = new Size(60, 25),
-                BackColor = Color.Red,
-                ForeColor = Color.White
+                Text = "− Minimize",
+                Location = new Point(490, 8),
+                Size = new Size(80, 25)
             };
-            closeBtn.Click += (s, e) => this.Close();
+            minimizeBtn.Click += (s, e) => MinimizeToTray();
 
-            toolbar.Controls.AddRange(new Control[] { titleLabel, openFolderBtn, settingsBtn, closeBtn });
+            toolbar.Controls.AddRange(new Control[] { titleLabel, openFolderBtn, addFilesBtn, settingsBtn, minimizeBtn });
             this.Controls.Add(toolbar);
 
             // Create native file list view
             CreateFileListView();
         }
 
+        private void CreateTrayIcon()
+        {
+            trayMenu = new ContextMenuStrip();
+            
+            var showItem = new ToolStripMenuItem("Show TempDrop");
+            showItem.Click += (s, e) => ShowFromTray();
+            trayMenu.Items.Add(showItem);
+            
+            trayMenu.Items.Add(new ToolStripSeparator());
+            
+            var openFolderItem = new ToolStripMenuItem("Open Folder");
+            openFolderItem.Click += (s, e) => OpenTempFolder();
+            trayMenu.Items.Add(openFolderItem);
+            
+            var addFilesItem = new ToolStripMenuItem("Add Files...");
+            addFilesItem.Click += (s, e) => ShowAddFilesDialog();
+            trayMenu.Items.Add(addFilesItem);
+            
+            var settingsItem = new ToolStripMenuItem("Settings");
+            settingsItem.Click += (s, e) => ShowSettings();
+            trayMenu.Items.Add(settingsItem);
+            
+            trayMenu.Items.Add(new ToolStripSeparator());
+            
+            var exitItem = new ToolStripMenuItem("Exit");
+            exitItem.Click += (s, e) => ExitApplication();
+            trayMenu.Items.Add(exitItem);
+
+            trayIcon = new NotifyIcon();
+            trayIcon.Icon = SystemIcons.Application;
+            trayIcon.Text = "TempDrop";
+            trayIcon.ContextMenuStrip = trayMenu;
+            trayIcon.Visible = true;
+            trayIcon.DoubleClick += (s, e) => ShowFromTray();
+        }
+
+        private void MinimizeToTray()
+        {
+            this.Hide();
+            trayIcon.ShowBalloonTip(1000, "TempDrop", "Minimized to tray", ToolTipIcon.Info);
+        }
+
+        private void ShowFromTray()
+        {
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
+            this.BringToFront();
+        }
+
+        private void ExitApplication()
+        {
+            trayIcon.Visible = false;
+            trayIcon.Dispose();
+            this.Close();
+        }
+
+
+
         private void CreateFileListView()
         {
             // Ensure temp folder exists
             Directory.CreateDirectory(tempFolder);
 
-            // Create ListView with native Windows file explorer look
+            // Create simple list view
             fileListView = new ListView
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
                 FullRowSelect = true,
-                GridLines = true,
                 AllowDrop = true
             };
 
-            // Add columns
             fileListView.Columns.Add("Name", 200);
             fileListView.Columns.Add("Size", 100);
             fileListView.Columns.Add("Type", 100);
             fileListView.Columns.Add("Date Modified", 150);
 
-            // Enable drag and drop
             fileListView.DragEnter += FileListView_DragEnter;
             fileListView.DragDrop += FileListView_DragDrop;
-
-            // Double-click to open
             fileListView.DoubleClick += FileListView_DoubleClick;
-
-            // Context menu
-            fileListView.ContextMenuStrip = CreateContextMenu();
 
             this.Controls.Add(fileListView);
             fileListView.BringToFront();
@@ -159,48 +224,7 @@ namespace TempDrop
             LoadFiles();
         }
 
-        private void LoadFiles()
-        {
-            fileListView.Items.Clear();
-            
-            try
-            {
-                foreach (string filePath in Directory.GetFiles(tempFolder))
-                {
-                    var fileInfo = new FileInfo(filePath);
-                    var item = new ListViewItem(fileInfo.Name);
-                    item.SubItems.Add(FormatFileSize(fileInfo.Length));
-                    item.SubItems.Add(GetFileType(fileInfo.Extension));
-                    item.SubItems.Add(fileInfo.LastWriteTime.ToString("g"));
-                    item.Tag = filePath;
-                    fileListView.Items.Add(item);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error loading files: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
 
-        private string FormatFileSize(long bytes)
-        {
-            string[] sizes = { "B", "KB", "MB", "GB" };
-            int order = 0;
-            double size = bytes;
-            
-            while (size >= 1024 && order < sizes.Length - 1)
-            {
-                order++;
-                size /= 1024;
-            }
-            
-            return $"{size:0.##} {sizes[order]}";
-        }
-
-        private string GetFileType(string extension)
-        {
-            return extension.ToUpper().TrimStart('.') + " File";
-        }
 
         private void FileListView_DragEnter(object sender, DragEventArgs e)
         {
@@ -271,38 +295,50 @@ namespace TempDrop
             }
         }
 
-        private ContextMenuStrip CreateContextMenu()
+        private void LoadFiles()
         {
-            var menu = new ContextMenuStrip();
+            fileListView.Items.Clear();
             
-            var addFilesItem = new ToolStripMenuItem("Add Files...");
-            addFilesItem.Click += (s, e) => ShowAddFilesDialog();
-            menu.Items.Add(addFilesItem);
-            
-            menu.Items.Add(new ToolStripSeparator());
-            
-            var openItem = new ToolStripMenuItem("Open");
-            openItem.Click += (s, e) => {
-                if (fileListView.SelectedItems.Count > 0)
+            try
+            {
+                foreach (string filePath in Directory.GetFiles(tempFolder))
                 {
-                    string filePath = fileListView.SelectedItems[0].Tag.ToString();
-                    OpenFile(filePath);
+                    var fileInfo = new FileInfo(filePath);
+                    var item = new ListViewItem(fileInfo.Name);
+                    item.SubItems.Add(FormatFileSize(fileInfo.Length));
+                    item.SubItems.Add(GetFileType(fileInfo.Extension));
+                    item.SubItems.Add(fileInfo.LastWriteTime.ToString("g"));
+                    item.Tag = filePath;
+                    fileListView.Items.Add(item);
                 }
-            };
-            menu.Items.Add(openItem);
-            
-            var deleteItem = new ToolStripMenuItem("Delete");
-            deleteItem.Click += (s, e) => {
-                if (fileListView.SelectedItems.Count > 0)
-                {
-                    string filePath = fileListView.SelectedItems[0].Tag.ToString();
-                    DeleteFile(filePath);
-                }
-            };
-            menu.Items.Add(deleteItem);
-            
-            return menu;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading files: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
+
+        private string FormatFileSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB" };
+            int order = 0;
+            double size = bytes;
+            
+            while (size >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                size /= 1024;
+            }
+            
+            return $"{size:0.##} {sizes[order]}";
+        }
+
+        private string GetFileType(string extension)
+        {
+            return extension.ToUpper().TrimStart('.') + " File";
+        }
+
+
 
         private void ShowAddFilesDialog()
         {
@@ -387,7 +423,7 @@ namespace TempDrop
                 {
                     Minimum = 1,
                     Maximum = 365,
-                    Value = autoDeleteDays
+                    Value = Math.Max(1, autoDeleteDays)
                 };
                 layout.Controls.Add(daysSpinner, 1, 0);
 
@@ -454,7 +490,18 @@ namespace TempDrop
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             SaveConfig();
+            trayIcon.Visible = false;
+            trayIcon.Dispose();
             base.OnFormClosing(e);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            if (this.WindowState == FormWindowState.Minimized)
+            {
+                MinimizeToTray();
+            }
+            base.OnResize(e);
         }
     }
 
