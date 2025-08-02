@@ -17,14 +17,15 @@ import win32con
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QListView, QAbstractItemView, QMenu, QMessageBox,
-    QFileIconProvider, QSystemTrayIcon, QStyle
+    QFileIconProvider, QSystemTrayIcon, QStyle, QInputDialog
 )
 from PyQt6.QtCore import (
     Qt, QSize, QPoint, QRect, QFileSystemWatcher
 )
 from PyQt6.QtGui import (
-    QFileSystemModel, QIcon, QAction, QMouseEvent
+    QFileSystemModel, QIcon, QAction, QMouseEvent, QKeyEvent, QKeySequence
 )
+from PyQt6.QtCore import QUrl
 
 class ResizableFramelessWindow(QMainWindow):
     """
@@ -188,6 +189,9 @@ class DesktopWidget(ResizableFramelessWindow):
         self.view.dragLeaveEvent = self.view_drag_leave_event
         self.view.dropEvent = self.view_drop_event
         
+        # Enable keyboard shortcuts
+        self.view.keyPressEvent = self.view_key_press_event
+        
         self.view.setObjectName("fileView")
         self.update_stylesheet()
         self.main_layout.addWidget(self.view)
@@ -294,13 +298,30 @@ class DesktopWidget(ResizableFramelessWindow):
             
     def show_context_menu(self, position):
         indexes = self.view.selectedIndexes()
-        if not indexes: return
-
+        
         menu = QMenu()
-        menu.addAction("Open", lambda: self.open_item(indexes[0]))
-        menu.addAction("Delete", lambda: self.delete_items(indexes))
+        
+        if indexes:
+            # File-specific actions
+            menu.addAction("Open", lambda: self.open_item(indexes[0]))
+            menu.addAction("Open with...", lambda: self.open_with_dialog(indexes[0]))
+            menu.addSeparator()
+            menu.addAction("Cut", lambda: self.cut_items(indexes))
+            menu.addAction("Copy", lambda: self.copy_items(indexes))
+            menu.addAction("Delete", lambda: self.delete_items(indexes))
+            menu.addSeparator()
+            menu.addAction("Rename", lambda: self.rename_item(indexes[0]))
+            menu.addAction("Properties", lambda: self.show_properties(indexes[0]))
+        else:
+            # Empty area actions
+            menu.addAction("Paste", self.paste_items)
+            menu.addSeparator()
+            menu.addAction("Select All", self.select_all)
+        
         menu.addSeparator()
         menu.addAction("Show in Explorer", self.show_in_explorer)
+        menu.addAction("Refresh", self.refresh_view)
+        
         menu.exec(self.view.viewport().mapToGlobal(position))
 
     def delete_items(self, indexes):
@@ -433,6 +454,137 @@ class DesktopWidget(ResizableFramelessWindow):
                 shutil.move(source_path, target_path)
             except Exception as e:
                 QMessageBox.warning(self, "Move Error", f"Could not move file:\n{e}")
+
+    def view_key_press_event(self, event: QKeyEvent):
+        """Handle keyboard shortcuts for the view."""
+        if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.copy_selected_items()
+        elif event.key() == Qt.Key.Key_X and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.cut_selected_items()
+        elif event.key() == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.paste_items()
+        elif event.key() == Qt.Key.Key_A and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.select_all()
+        elif event.key() == Qt.Key.Key_Delete:
+            self.delete_selected_items()
+        elif event.key() == Qt.Key.Key_F2:
+            indexes = self.view.selectedIndexes()
+            if indexes:
+                self.rename_item(indexes[0])
+        else:
+            # Call the original keyPressEvent
+            QListView.keyPressEvent(self.view, event)
+
+    def copy_selected_items(self):
+        """Copy selected items to clipboard."""
+        indexes = self.view.selectedIndexes()
+        if indexes:
+            self.copy_items(indexes)
+
+    def cut_selected_items(self):
+        """Cut selected items to clipboard."""
+        indexes = self.view.selectedIndexes()
+        if indexes:
+            self.cut_items(indexes)
+
+    def delete_selected_items(self):
+        """Delete selected items."""
+        indexes = self.view.selectedIndexes()
+        if indexes:
+            self.delete_items(indexes)
+
+    def select_all(self):
+        """Select all items in the view."""
+        self.view.selectAll()
+
+    def copy_items(self, indexes):
+        """Copy items to clipboard."""
+        try:
+            paths = [self.model.filePath(i) for i in indexes]
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
+            clipboard.setMimeData(mime_data)
+        except Exception as e:
+            QMessageBox.warning(self, "Copy Error", f"Could not copy items:\n{e}")
+
+    def cut_items(self, indexes):
+        """Cut items to clipboard."""
+        try:
+            paths = [self.model.filePath(i) for i in indexes]
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
+            # Mark as cut operation
+            mime_data.setData("application/x-qt-windows-mime;value=\"Preferred DropEffect\"", b"\x05\x00\x00\x00")
+            clipboard.setMimeData(mime_data)
+        except Exception as e:
+            QMessageBox.warning(self, "Cut Error", f"Could not cut items:\n{e}")
+
+    def paste_items(self):
+        """Paste items from clipboard."""
+        try:
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            
+            if mime_data.hasUrls():
+                for url in mime_data.urls():
+                    source_path = url.toLocalFile()
+                    if os.path.exists(source_path):
+                        filename = os.path.basename(source_path)
+                        target_path = os.path.join(self.tempdrop_folder, filename)
+                        
+                        # Handle duplicate filenames
+                        counter = 1
+                        base_name, ext = os.path.splitext(filename)
+                        while os.path.exists(target_path):
+                            new_filename = f"{base_name}_{counter}{ext}"
+                            target_path = os.path.join(self.tempdrop_folder, new_filename)
+                            counter += 1
+                        
+                        # Check if this was a cut operation
+                        if mime_data.hasFormat("application/x-qt-windows-mime;value=\"Preferred DropEffect\""):
+                            shutil.move(source_path, target_path)
+                        else:
+                            shutil.copy2(source_path, target_path)
+                            
+        except Exception as e:
+            QMessageBox.warning(self, "Paste Error", f"Could not paste items:\n{e}")
+
+    def open_with_dialog(self, index):
+        """Open file with default application dialog."""
+        try:
+            file_path = self.model.filePath(index)
+            os.startfile(file_path)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open file:\n{e}")
+
+    def rename_item(self, index):
+        """Rename the selected item."""
+        try:
+            file_path = self.model.filePath(index)
+            filename = os.path.basename(file_path)
+            new_name, ok = QInputDialog.getText(self, "Rename", "Enter new name:", text=filename)
+            if ok and new_name and new_name != filename:
+                new_path = os.path.join(os.path.dirname(file_path), new_name)
+                if not os.path.exists(new_path):
+                    os.rename(file_path, new_path)
+                else:
+                    QMessageBox.warning(self, "Error", "A file with that name already exists.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not rename file:\n{e}")
+
+    def show_properties(self, index):
+        """Show file properties dialog."""
+        try:
+            file_path = self.model.filePath(index)
+            subprocess.Popen(['explorer', '/select,', file_path])
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not show properties:\n{e}")
+
+    def refresh_view(self):
+        """Refresh the file view."""
+        self.directory_changed()
 
     def closeEvent(self, event):
         self.save_config(); event.accept(); QApplication.instance().quit()
