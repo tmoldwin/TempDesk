@@ -261,14 +261,16 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath(self.tempdrop_folder)
         self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
         
+        # Filter to only show files (not directories like "old")
+        self.model.setFilter(QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
+        
         print(f"[MODEL DEBUG] Model root path set to: {self.model.rootPath()}")
         print(f"[MODEL DEBUG] TempDrop folder: {self.tempdrop_folder}")
         
-        # FUCK THE PROXY MODEL - Let's just use the basic model for now
         self.view.setModel(self.model)
         self.view.setRootIndex(self.model.index(self.tempdrop_folder))
         
-        print(f"[MODEL DEBUG] Using basic model without filtering for now")
+        print(f"[MODEL DEBUG] Using basic model with files-only filter")
         
         self.watcher = QFileSystemWatcher([self.tempdrop_folder])
         self.watcher.directoryChanged.connect(self.directory_changed)
@@ -339,21 +341,14 @@ class DesktopWidget(ResizableFramelessWindow):
         print(f"[LOG] Filter period: {filter_period}s")
         print(f"[LOG] Current time: {current_time}")
         
-        # Create a temporary hidden folder for old files (with hidden attribute)
-        hidden_folder = os.path.join(self.tempdrop_folder, '.hidden_old_files')
+        # Create a folder for old files (excluded from view)
+        hidden_folder = os.path.join(self.tempdrop_folder, 'old')
         os.makedirs(hidden_folder, exist_ok=True)
-        
-        # Hide the folder on Windows
-        try:
-            import subprocess
-            subprocess.run(['attrib', '+H', hidden_folder], check=False, capture_output=True)
-        except:
-            pass  # If hiding fails, continue anyway
         
         # Move old files to hidden folder, bring back recent files
         try:
             files_in_folder = os.listdir(self.tempdrop_folder)
-            files_to_process = [f for f in files_in_folder if not f.startswith('.')]
+            files_to_process = [f for f in files_in_folder if not f.startswith('.') and f != 'old']
             
             print(f"[FILTER] Processing {len(files_to_process)} files...")
             
@@ -412,10 +407,8 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath("")
         self.model.setRootPath(self.tempdrop_folder)
         
-        # Give the file system and model a moment to update
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(100, self.debug_visible_items)
-        
+        # Show what's actually visible now
+        self.debug_visible_items()
         print(f"🔍 FILTER APPLICATION COMPLETE\n")
     
     def debug_visible_items(self):
