@@ -41,15 +41,26 @@ TempDesk gives you a transparent window on your desktop where you can store thes
    python TempDesk.py
    ```
 
-### Build Executable
+### Build Executable and Installer
 
-To create a standalone executable:
+To create a standalone executable and Windows installer:
 
 ```bash
+# Build everything (recommended)
+python build_installer.py
+
+# Or build just the executable
 python build.py
+
+# Or use the batch file
+build_all.bat
 ```
 
-The executable will be created in the `dist/` folder.
+The files will be created in:
+- `dist/TempDesk.exe` - Standalone executable
+- `TempDesk-Setup.exe` - Windows installer (if NSIS is installed)
+
+**Note:** To create the installer, you need NSIS installed. Download from: https://nsis.sourceforge.io/Download
 
 ## How It Works
 
@@ -89,7 +100,7 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 ### Settings
 - **Filtering Time**: Set how many days before files are hidden from view (1 minute to 1 month)
 - **Auto-Delete**: Optional setting to permanently delete files after the time period
-- **Storage Location**: Files are stored in `C:\Users\YourName\TempDesk`
+- **Storage Location**: Files are stored in `C:\Users\YourName\TempDesk` (can be changed via folder picker)
 
 ## User Experience Flow
 
@@ -132,8 +143,8 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **File Operations**: Native Windows file operations
 
 ### File Storage
-- **Location**: `C:\Users\YourName\TempDesk`
-- **Hidden Files**: Old files are moved to `C:\Users\YourName\TempDesk\old` folder
+- **Location**: `C:\Users\YourName\TempDesk` (configurable via settings)
+- **Hidden Files**: Old files are moved to `[folder]\old` folder
 - **Configuration**: Settings stored in `C:\Users\YourName\.TempDesk_config.json`
 
 ## Getting Started

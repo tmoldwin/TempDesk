@@ -21,19 +21,19 @@ def main():
         print("Installing PyInstaller...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
     
-    # Create icons if they don't exist
-    if not os.path.exists("icons"):
-        print("Creating icons...")
-        subprocess.check_call([sys.executable, "create_icons.py"])
+    # Create main icon if it doesn't exist
+    if not os.path.exists("icons/tempdesk_icon.ico"):
+        print("Creating TempDesk icon...")
+        subprocess.check_call([sys.executable, "create_icon.py"])
     
     # Build command
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--windowed",
         "--name=TempDesk",
         "--add-data=icons;icons",
-        "--icon=icons/file.png",
+        "--icon=icons/tempdesk_icon.ico",
         "TempDesk.py"
     ]
     

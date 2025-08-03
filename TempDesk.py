@@ -119,6 +119,9 @@ class DesktopWidget(ResizableFramelessWindow):
         self.pin_to_desktop()
         
     def get_TempDesk_folder(self) -> str:
+        # Check if custom folder is set in config
+        if hasattr(self, 'config') and self.config and self.config.get('tempdesk_folder'):
+            return self.config['tempdesk_folder']
         return str(Path.home() / 'TempDesk')
     
     def load_config(self) -> dict:
@@ -127,7 +130,8 @@ class DesktopWidget(ResizableFramelessWindow):
         default_config = {
             'filter_period': 86400,  # 1 day in seconds
             'auto_delete': False,
-            'window_geometry': None
+            'window_geometry': None,
+            'tempdesk_folder': None  # Will use default if None
         }
         
         # Try to load from new config file first
@@ -172,7 +176,8 @@ class DesktopWidget(ResizableFramelessWindow):
         config = {
             'window_geometry': self.saveGeometry().data().hex(),
             'filter_period': self.config.get('filter_period', 86400),
-            'auto_delete': self.config.get('auto_delete', False)
+            'auto_delete': self.config.get('auto_delete', False),
+            'tempdesk_folder': self.config.get('tempdesk_folder', None)
         }
         try:
             with open(config_path, 'w') as f: json.dump(config, f, indent=2)
@@ -537,21 +542,26 @@ class DesktopWidget(ResizableFramelessWindow):
         
     def show_settings_dialog(self):
         """Show the settings dialog with filtering and deletion options."""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox, QPushButton, QGroupBox
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox, QPushButton, QGroupBox, QFileDialog
         
         dialog = QDialog(self)
         dialog.setWindowTitle("TempDesk Settings")
-        dialog.setFixedSize(400, 300)
+        dialog.setFixedSize(450, 350)
         
         layout = QVBoxLayout(dialog)
         
         # Folder section
         folder_group = QGroupBox("Storage Location")
         folder_layout = QVBoxLayout(folder_group)
-        folder_label = QLabel(f"TempDesk Folder: {self.TempDesk_folder}")
+        folder_label = QLabel(f"Current TempDesk Folder: {self.TempDesk_folder}")
+        folder_label.setWordWrap(True)
         folder_layout.addWidget(folder_label)
         
         folder_buttons = QHBoxLayout()
+        change_folder_btn = QPushButton("Change Folder...")
+        change_folder_btn.clicked.connect(lambda: self.change_tempdesk_folder(dialog))
+        folder_buttons.addWidget(change_folder_btn)
+        
         open_folder_btn = QPushButton("Open Folder")
         open_folder_btn.clicked.connect(self.show_in_explorer)
         folder_buttons.addWidget(open_folder_btn)
@@ -634,9 +644,58 @@ class DesktopWidget(ResizableFramelessWindow):
         self.config['auto_delete'] = self.auto_delete_checkbox.isChecked()
         self.save_config()
         
+    def change_tempdesk_folder(self, dialog):
+        """Change the TempDesk folder location."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        
+        new_folder = QFileDialog.getExistingDirectory(
+            self, 
+            "Select TempDesk Folder", 
+            self.TempDesk_folder,
+            QFileDialog.Option.ShowDirsOnly
+        )
+        
+        if new_folder:
+            try:
+                # Create the new folder if it doesn't exist
+                os.makedirs(new_folder, exist_ok=True)
+                
+                # Update the folder path
+                old_folder = self.TempDesk_folder
+                self.TempDesk_folder = new_folder
+                
+                # Update the model to use the new folder
+                self.model.setRootPath(self.TempDesk_folder)
+                self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+                
+                # Update the file watcher
+                self.watcher.removePath(old_folder)
+                self.watcher.addPath(self.TempDesk_folder)
+                
+                # Save the new folder path to config
+                self.config['tempdesk_folder'] = self.TempDesk_folder
+                self.save_config()
+                
+                # Show success message
+                QMessageBox.information(
+                    self, 
+                    "Folder Changed", 
+                    f"TempDesk folder changed to:\n{self.TempDesk_folder}\n\nFiles will now be stored in this new location."
+                )
+                
+                # Close the settings dialog
+                dialog.accept()
+                
+            except Exception as e:
+                QMessageBox.warning(
+                    self, 
+                    "Error", 
+                    f"Could not change folder:\n{e}"
+                )
+    
     def clear_TempDesk_folder(self):
         reply = QMessageBox.warning(self, "Confirm Clear", "Permanently delete ALL items in TempDesk?",
-                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
         if reply == QMessageBox.StandardButton.Yes:
             for item in os.listdir(self.TempDesk_folder):
                 try:
