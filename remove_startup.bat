@@ -1,10 +1,16 @@
 @echo off
-echo Removing TempDesk from Windows startup...
+echo Removing TempDesk from Windows startup and desktop...
 
 REM Remove from startup folder
 if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\TempDesk.lnk" (
     del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\TempDesk.lnk"
     echo Removed startup folder shortcut.
+)
+
+REM Remove desktop shortcut
+if exist "%USERPROFILE%\Desktop\TempDesk.lnk" (
+    del "%USERPROFILE%\Desktop\TempDesk.lnk"
+    echo Removed desktop shortcut.
 )
 
 REM Remove from registry
@@ -16,7 +22,7 @@ if %errorlevel% equ 0 (
 )
 
 echo.
-echo TempDesk has been removed from Windows startup!
+echo TempDesk has been removed from Windows startup and desktop!
 echo It will no longer start automatically when you log in.
 echo.
 pause 

@@ -29,9 +29,9 @@ def main():
     try:
         # Try to find NSIS compiler
         nsis_paths = [
+            "makensis.exe",  # If it's in PATH
             r"C:\Program Files\NSIS\makensis.exe",
             r"C:\Program Files (x86)\NSIS\makensis.exe",
-            "makensis.exe"  # If it's in PATH
         ]
         
         nsis_found = False
