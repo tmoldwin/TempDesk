@@ -1123,7 +1123,7 @@ class DesktopWidget(ResizableFramelessWindow):
                     ("lpDirectory", wintypes.LPCWSTR),
                     ("nShow", wintypes.INT),
                     ("hInstApp", wintypes.HINSTANCE),
-                    ("lpIDList", ctypes.c_void_p),
+                    ("lpIDList", wintypes.LPVOID),
                     ("lpClass", wintypes.LPCWSTR),
                     ("hkeyClass", wintypes.HKEY),
                     ("dwHotKey", wintypes.DWORD),
@@ -1131,18 +1131,23 @@ class DesktopWidget(ResizableFramelessWindow):
                     ("hProcess", wintypes.HANDLE)
                 ]
             
-            # Set up the structure
+            # Constants
+            SEE_MASK_INVOKEIDLIST = 0x0000000C
+            SW_SHOW = 5
+            
+            # Create the structure
             sei = SHELLEXECUTEINFO()
             sei.cbSize = ctypes.sizeof(SHELLEXECUTEINFO)
+            sei.fMask = SEE_MASK_INVOKEIDLIST
             sei.lpVerb = "properties"
             sei.lpFile = file_path
-            sei.nShow = 1  # SW_SHOWNORMAL
+            sei.nShow = SW_SHOW
             
             # Call ShellExecuteEx
             result = shell32.ShellExecuteExW(ctypes.byref(sei))
             
             if not result:
-                # Fallback: try using explorer with /select, parameter
+                # Fallback: open Explorer and select the file
                 subprocess.Popen(['explorer', '/select,', file_path])
                 
         except Exception as e:
