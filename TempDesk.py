@@ -8,7 +8,9 @@ import os
 import json
 import shutil
 import subprocess
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Windows-specific imports are required for desktop parenting and tray icon
 import win32gui
@@ -979,6 +981,14 @@ class DesktopWidget(ResizableFramelessWindow):
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             
+            # Check for URLs first (web links)
+            if mime_data.hasText():
+                text = mime_data.text().strip()
+                if self.is_url(text):
+                    self.create_url_shortcut(text)
+                    return
+            
+            # Handle file URLs
             if mime_data.hasUrls():
                 for url in mime_data.urls():
                     source_path = url.toLocalFile()
@@ -1015,6 +1025,56 @@ class DesktopWidget(ResizableFramelessWindow):
                             
         except Exception as e:
             QMessageBox.warning(self, "Paste Error", f"Could not paste items:\n{e}")
+    
+    def is_url(self, text):
+        """Check if text looks like a URL."""
+        import re
+        # Simple URL pattern matching
+        url_pattern = re.compile(
+            r'^https?://'  # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+            r'localhost|'  # localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        return bool(url_pattern.match(text))
+    
+    def create_url_shortcut(self, url):
+        """Create a Windows shortcut file for a URL."""
+        try:
+            import win32com.client
+            
+            # Generate a filename from the URL
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace('www.', '').replace('.', '_')
+            filename = f"{domain}.url"
+            
+            # Handle duplicate filenames
+            counter = 1
+            base_name, ext = os.path.splitext(filename)
+            target_path = os.path.join(self.TempDesk_folder, filename)
+            while os.path.exists(target_path):
+                new_filename = f"{base_name}_{counter}{ext}"
+                target_path = os.path.join(self.TempDesk_folder, new_filename)
+                counter += 1
+            
+            # Create the .url file
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write("[InternetShortcut]\n")
+                f.write(f"URL={url}\n")
+                f.write("IconIndex=0\n")
+            
+            print(f"🔗 URL SHORTCUT CREATED: {filename}")
+            print(f"   URL: {url}")
+            print(f"   Path: {target_path}")
+            
+            # Refresh the file system model to show changes immediately
+            self.model.setRootPath("")
+            self.model.setRootPath(self.TempDesk_folder)
+            
+        except Exception as e:
+            print(f"Error creating URL shortcut: {e}")
+            QMessageBox.warning(self, "Error", f"Could not create URL shortcut:\n{e}")
 
     def open_with_dialog(self, index):
         """Open file with default application dialog."""
