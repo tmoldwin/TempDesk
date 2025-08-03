@@ -538,7 +538,26 @@ class DesktopWidget(ResizableFramelessWindow):
             self.model.setRootPath(self.TempDesk_folder)
 
     def show_in_explorer(self):
-        subprocess.Popen(f'explorer "{self.TempDesk_folder}"')
+        print(f"[DEBUG] Attempting to open folder: {self.TempDesk_folder}")
+        try:
+            # Use os.startfile which is more reliable for opening folders on Windows
+            os.startfile(self.TempDesk_folder)
+            print(f"[DEBUG] Successfully opened folder using os.startfile")
+        except Exception as e:
+            print(f"[DEBUG] os.startfile failed: {e}")
+            # Fallback to subprocess if os.startfile fails
+            try:
+                subprocess.Popen(['explorer', self.TempDesk_folder], shell=False)
+                print(f"[DEBUG] Successfully opened folder using subprocess")
+            except Exception as e2:
+                print(f"[DEBUG] subprocess failed: {e2}")
+                # Final fallback with shell=True
+                try:
+                    subprocess.Popen(f'explorer "{self.TempDesk_folder}"', shell=True)
+                    print(f"[DEBUG] Successfully opened folder using shell=True")
+                except Exception as e3:
+                    print(f"[DEBUG] All methods failed: {e3}")
+                    QMessageBox.warning(self, "Error", f"Could not open folder:\n{self.TempDesk_folder}\n\nError: {e3}")
         
     def show_settings_dialog(self):
         """Show the settings dialog with filtering and deletion options."""
