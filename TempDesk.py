@@ -285,8 +285,8 @@ class DesktopWidget(ResizableFramelessWindow):
         self.model.setRootPath(self.TempDesk_folder)
         self.model.iconProvider().setOptions(QFileIconProvider.Option.DontUseCustomDirectoryIcons)
         
-        # Filter to only show files (not directories like "old")
-        self.model.setFilter(QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
+        # Filter to show files and directories (but exclude "old" directory)
+        self.model.setFilter(QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot)
         
         print(f"[MODEL DEBUG] Model root path set to: {self.model.rootPath()}")
         print(f"[MODEL DEBUG] TempDesk folder: {self.TempDesk_folder}")
@@ -296,8 +296,19 @@ class DesktopWidget(ResizableFramelessWindow):
         
         print(f"[MODEL DEBUG] Using basic model with files-only filter")
         
+        # Setup file system watcher with enhanced monitoring
         self.watcher = QFileSystemWatcher([self.TempDesk_folder])
         self.watcher.directoryChanged.connect(self.directory_changed)
+        
+        # Also watch the hidden folder to catch files being moved back
+        hidden_folder = os.path.join(self.TempDesk_folder, 'old')
+        if os.path.exists(hidden_folder):
+            self.watcher.addPath(hidden_folder)
+        
+        # Ensure hidden folder is created and watched
+        os.makedirs(hidden_folder, exist_ok=True)
+        if hidden_folder not in self.watcher.directories():
+            self.watcher.addPath(hidden_folder)
         
         # Setup auto-cleanup timer
         self.cleanup_timer = QTimer()
@@ -353,9 +364,18 @@ class DesktopWidget(ResizableFramelessWindow):
             # Continue without pinning to desktop
 
     def directory_changed(self):
-        self.model.setRootPath(""); self.model.setRootPath(self.TempDesk_folder)
+        """Handle directory changes and ensure new files are properly filtered."""
+        print(f"[DIRECTORY] Directory changed, refreshing view and applying filter")
+        
+        # Force refresh the file system model
+        self.model.setRootPath("")
+        self.model.setRootPath(self.TempDesk_folder)
         self.view.setRootIndex(self.model.index(self.TempDesk_folder))
-        print(f"[DIRECTORY] Directory changed, refreshed view")
+        
+        # Apply filter to ensure new files are properly handled
+        self.apply_file_filter()
+        
+        print(f"[DIRECTORY] Directory change handling complete")
     
     def periodic_refresh(self):
         """Periodic refresh to ensure view stays accurate."""
@@ -384,9 +404,20 @@ class DesktopWidget(ResizableFramelessWindow):
         print(f"[LOG] Filter period: {filter_period}s")
         print(f"[LOG] Current time: {current_time}")
         
+        # Force refresh the model to ensure all files are detected
+        self.model.setRootPath("")
+        self.model.setRootPath(self.TempDesk_folder)
+        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+        
         # Create a folder for old files (excluded from view)
         hidden_folder = os.path.join(self.TempDesk_folder, 'old')
         os.makedirs(hidden_folder, exist_ok=True)
+        
+        # Track what should be visible vs what actually is
+        should_be_visible = []
+        should_be_hidden = []
+        actually_visible = []
+        errors = []
         
         # Move old files to hidden folder, bring back recent files
         try:
@@ -399,59 +430,123 @@ class DesktopWidget(ResizableFramelessWindow):
                 file_path = os.path.join(self.TempDesk_folder, file)
                 hidden_path = os.path.join(hidden_folder, file)
                 
-                if os.path.isfile(file_path):
-                    # Get file creation time in this folder (when it was added to TempDesk)
-                    # Note: os.path.getctime() returns when file was created in this location,
-                    # which is when it was dragged/copied/moved here
-                    ctime = os.path.getctime(file_path)
-                    age = current_time - ctime  # Age in seconds since added to TempDesk
-                    should_show = age <= filter_period
-                    
-                    if should_show:
-                        # File should be visible - make sure it's in main folder
-                        if not os.path.exists(file_path) and os.path.exists(hidden_path):
-                            os.rename(hidden_path, file_path)
-                            print(f"[FILTER] ✓ RESTORED: {file} (age: {age:.1f}s)")
+                try:
+                    if os.path.isfile(file_path) or os.path.isdir(file_path):
+                        # Get both creation time and last access time
+                        ctime = os.path.getctime(file_path)  # When added to TempDesk
+                        atime = os.path.getatime(file_path)   # When last accessed/opened
+                        
+                        # Use whichever is more recent (last activity)
+                        last_activity = max(ctime, atime)
+                        age = current_time - last_activity
+                        should_show = age <= filter_period
+                        
+                        # Determine the reason for visibility
+                        if ctime > atime:
+                            reason = "added"
+                        elif atime > ctime:
+                            reason = "accessed"
                         else:
-                            print(f"[FILTER] ✓ VISIBLE: {file} (age: {age:.1f}s)")
+                            reason = "added/accessed"
+                        
+                        # Track what should be visible
+                        if should_show:
+                            should_be_visible.append((file, age, reason))
+                        else:
+                            should_be_hidden.append((file, age, reason))
+                        
+                        if should_show:
+                            # Item should be visible - make sure it's in main folder
+                            if not os.path.exists(file_path) and os.path.exists(hidden_path):
+                                os.rename(hidden_path, file_path)
+                                item_type = "DIR" if os.path.isdir(file_path) else "FILE"
+                                print(f"[FILTER] ✓ RESTORED: {file} ({item_type}, age: {age:.1f}s, {reason})")
+                            else:
+                                item_type = "DIR" if os.path.isdir(file_path) else "FILE"
+                                print(f"[FILTER] ✓ VISIBLE: {file} ({item_type}, age: {age:.1f}s, {reason})")
+                        else:
+                            # Item should be hidden - move to hidden folder
+                            if os.path.exists(file_path):
+                                # Handle duplicates in hidden folder
+                                counter = 1
+                                final_hidden_path = hidden_path
+                                base_name, ext = os.path.splitext(file)
+                                while os.path.exists(final_hidden_path):
+                                    new_name = f"{base_name}_{counter}{ext}"
+                                    final_hidden_path = os.path.join(hidden_folder, new_name)
+                                    counter += 1
+                                
+                                os.rename(file_path, final_hidden_path)
+                                item_type = "DIR" if os.path.isdir(file_path) else "FILE"
+                                print(f"[FILTER] ✗ HIDDEN: {file} ({item_type}, age: {age:.1f}s, {reason})")
                     else:
-                        # File should be hidden - move to hidden folder
-                        if os.path.exists(file_path):
-                            # Handle duplicates in hidden folder
-                            counter = 1
-                            final_hidden_path = hidden_path
-                            base_name, ext = os.path.splitext(file)
-                            while os.path.exists(final_hidden_path):
-                                new_name = f"{base_name}_{counter}{ext}"
-                                final_hidden_path = os.path.join(hidden_folder, new_name)
-                                counter += 1
-                            
-                            os.rename(file_path, final_hidden_path)
-                            print(f"[FILTER] ✗ HIDDEN: {file} (age: {age:.1f}s)")
+                        print(f"[FILTER] ⚠️ Skipping non-file/directory item: {file}")
+                        
+                except Exception as e:
+                    error_msg = f"Error processing {file}: {e}"
+                    print(f"[FILTER] ❌ {error_msg}")
+                    errors.append(error_msg)
             
             # Also check hidden folder for files that should now be visible
             if os.path.exists(hidden_folder):
                 hidden_files = os.listdir(hidden_folder)
                 for hidden_file in hidden_files:
                     hidden_file_path = os.path.join(hidden_folder, hidden_file)
-                    if os.path.isfile(hidden_file_path):
-                        ctime = os.path.getctime(hidden_file_path)
-                        age = current_time - ctime
-                        should_show = age <= filter_period
-                        
-                        if should_show:
-                            # Move back to main folder
-                            main_file_path = os.path.join(self.TempDesk_folder, hidden_file)
-                            if not os.path.exists(main_file_path):
-                                os.rename(hidden_file_path, main_file_path)
-                                print(f"[FILTER] ✓ RESTORED: {hidden_file} (age: {age:.1f}s)")
+                    try:
+                        if os.path.isfile(hidden_file_path) or os.path.isdir(hidden_file_path):
+                            ctime = os.path.getctime(hidden_file_path)
+                            atime = os.path.getatime(hidden_file_path)
+                            last_activity = max(ctime, atime)
+                            age = current_time - last_activity
+                            should_show = age <= filter_period
+                            
+                            if should_show:
+                                # Move back to main folder
+                                main_file_path = os.path.join(self.TempDesk_folder, hidden_file)
+                                if not os.path.exists(main_file_path):
+                                    os.rename(hidden_file_path, main_file_path)
+                                    reason = "accessed" if atime > ctime else "added"
+                                    should_be_visible.append((hidden_file, age, reason))
+                                    item_type = "DIR" if os.path.isdir(hidden_file_path) else "FILE"
+                                    print(f"[FILTER] ✓ RESTORED: {hidden_file} ({item_type}, age: {age:.1f}s, {reason})")
+                            else:
+                                should_be_hidden.append((hidden_file, age, "hidden"))
+                        else:
+                            print(f"[FILTER] ⚠️ Skipping non-file/directory item in hidden folder: {hidden_file}")
+                            
+                    except Exception as e:
+                        error_msg = f"Error processing hidden file {hidden_file}: {e}"
+                        print(f"[FILTER] ❌ {error_msg}")
+                        errors.append(error_msg)
                         
         except Exception as e:
-            print(f"[FILTER] Error applying filter: {e}")
+            error_msg = f"Error applying filter: {e}"
+            print(f"[FILTER] ❌ {error_msg}")
+            errors.append(error_msg)
         
         # Refresh the view to show changes
-        self.model.setRootPath("")
-        self.model.setRootPath(self.TempDesk_folder)
+        try:
+            self.model.setRootPath("")
+            self.model.setRootPath(self.TempDesk_folder)
+        except Exception as e:
+            error_msg = f"Error refreshing model: {e}"
+            print(f"[FILTER] ❌ {error_msg}")
+            errors.append(error_msg)
+        
+        # Show comprehensive debug information
+        print(f"\n📊 FILTER DEBUG SUMMARY:")
+        print(f"   Should be visible: {len(should_be_visible)} files")
+        for file, age, reason in should_be_visible:
+            print(f"     ✓ {file} (age: {age:.1f}s, {reason})")
+        
+        print(f"   Should be hidden: {len(should_be_hidden)} files")
+        for file, age, reason in should_be_hidden:
+            print(f"     ✗ {file} (age: {age:.1f}s, {reason})")
+        
+        if errors:
+            print(f"   Errors encountered: {len(errors)}")
+            for error in errors:
+                print(f"     ❌ {error}")
         
         # Show what's actually visible now
         self.debug_visible_items()
@@ -461,24 +556,58 @@ class DesktopWidget(ResizableFramelessWindow):
         """Debug function to show what items are actually visible in the view."""
         try:
             import os
+            import time
             
             # Get root index for counting
             root_index = self.view.rootIndex()
             visible_count = self.model.rowCount(root_index)
             
-            print(f"📋 VISIBLE ITEMS IN VIEW: {visible_count}")
+            print(f"📋 ACTUALLY VISIBLE IN VIEW: {visible_count} files")
             
             if visible_count == 0:
                 print("   (No items visible)")
             else:
+                current_time = time.time()
                 for row in range(visible_count):
-                    item_index = self.model.index(row, 0, root_index)
-                    file_path = self.model.filePath(item_index)
-                    file_name = os.path.basename(file_path)
-                    print(f"   {row + 1}. {file_name}")
+                    try:
+                        item_index = self.model.index(row, 0, root_index)
+                        file_path = self.model.filePath(item_index)
+                        file_name = os.path.basename(file_path)
+                        
+                        # Get file info for debugging
+                        if os.path.exists(file_path):
+                            ctime = os.path.getctime(file_path)
+                            atime = os.path.getatime(file_path)
+                            last_activity = max(ctime, atime)
+                            age = current_time - last_activity
+                            
+                            if ctime > atime:
+                                reason = "added"
+                            elif atime > ctime:
+                                reason = "accessed"
+                            else:
+                                reason = "added/accessed"
+                                
+                            print(f"   {row + 1}. {file_name} (age: {age:.1f}s, {reason})")
+                        else:
+                            print(f"   {row + 1}. {file_name} (file not found!)")
+                            
+                    except Exception as e:
+                        print(f"   {row + 1}. [ERROR getting file info: {e}]")
                 
         except Exception as e:
             print(f"[VIEW DEBUG] Error checking visible items: {e}")
+            
+        # Also check what files are actually in the folder
+        try:
+            files_in_folder = [f for f in os.listdir(self.TempDesk_folder) 
+                             if not f.startswith('.') and f != 'old' and os.path.isfile(os.path.join(self.TempDesk_folder, f))]
+            print(f"📁 FILES ACTUALLY IN FOLDER: {len(files_in_folder)} files")
+            for file in files_in_folder:
+                print(f"     📄 {file}")
+                
+        except Exception as e:
+            print(f"[VIEW DEBUG] Error checking folder contents: {e}")
     
     def open_item(self, index):
         try: 
@@ -1171,9 +1300,12 @@ class DesktopWidget(ResizableFramelessWindow):
                 item_path = os.path.join(self.TempDesk_folder, item)
                 if os.path.exists(item_path):
                     try:
-                        # Use creation time to match the filtering logic
+                        # Use the same logic as the filter - most recent activity
                         ctime = os.path.getctime(item_path)
-                        if (current_time - ctime) > filter_period:
+                        atime = os.path.getatime(item_path)
+                        last_activity = max(ctime, atime)
+                        
+                        if (current_time - last_activity) > filter_period:
                             if os.path.isfile(item_path):
                                 os.remove(item_path)
                             elif os.path.isdir(item_path):
