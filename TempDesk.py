@@ -1103,7 +1103,48 @@ class DesktopWidget(ResizableFramelessWindow):
         """Show file properties dialog."""
         try:
             file_path = self.model.filePath(index)
-            subprocess.Popen(['explorer', '/select,', file_path])
+            
+            # Use Windows shell to show properties dialog
+            import ctypes
+            from ctypes import wintypes
+            
+            # Load shell32.dll
+            shell32 = ctypes.windll.shell32
+            
+            # Define the SHELLEXECUTEINFO structure
+            class SHELLEXECUTEINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("fMask", wintypes.ULONG),
+                    ("hwnd", wintypes.HWND),
+                    ("lpVerb", wintypes.LPCWSTR),
+                    ("lpFile", wintypes.LPCWSTR),
+                    ("lpParameters", wintypes.LPCWSTR),
+                    ("lpDirectory", wintypes.LPCWSTR),
+                    ("nShow", wintypes.INT),
+                    ("hInstApp", wintypes.HINSTANCE),
+                    ("lpIDList", ctypes.c_void_p),
+                    ("lpClass", wintypes.LPCWSTR),
+                    ("hkeyClass", wintypes.HKEY),
+                    ("dwHotKey", wintypes.DWORD),
+                    ("hIcon", wintypes.HANDLE),
+                    ("hProcess", wintypes.HANDLE)
+                ]
+            
+            # Set up the structure
+            sei = SHELLEXECUTEINFO()
+            sei.cbSize = ctypes.sizeof(SHELLEXECUTEINFO)
+            sei.lpVerb = "properties"
+            sei.lpFile = file_path
+            sei.nShow = 1  # SW_SHOWNORMAL
+            
+            # Call ShellExecuteEx
+            result = shell32.ShellExecuteExW(ctypes.byref(sei))
+            
+            if not result:
+                # Fallback: try using explorer with /select, parameter
+                subprocess.Popen(['explorer', '/select,', file_path])
+                
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not show properties:\n{e}")
 
