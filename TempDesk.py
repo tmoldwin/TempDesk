@@ -100,6 +100,47 @@ class ResizableFramelessWindow(QMainWindow):
         self.setGeometry(rect)
 
 
+class TimeSortProxyModel(QSortFilterProxyModel):
+    """
+    A proxy model that sorts files by their creation time (when they were added to TempDesk).
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+    
+    def filterAcceptsRow(self, source_row, source_parent):
+        """
+        Filter out the 'old' folder from the view.
+        """
+        source_index = self.sourceModel().index(source_row, 0, source_parent)
+        file_path = self.sourceModel().filePath(source_index)
+        file_name = os.path.basename(file_path)
+        
+        # Hide the 'old' folder
+        if file_name == 'old':
+            return False
+        
+        return True
+    
+    def lessThan(self, left, right):
+        """
+        Compare two items based on their creation time.
+        """
+        left_path = self.sourceModel().filePath(left)
+        right_path = self.sourceModel().filePath(right)
+        
+        try:
+            # Get creation times
+            left_ctime = os.path.getctime(left_path)
+            right_ctime = os.path.getctime(right_path)
+            
+            # Sort by creation time (newest first)
+            result = left_ctime > right_ctime
+            return result
+        except (OSError, FileNotFoundError):
+            # If we can't get file times, fall back to default sorting
+            return super().lessThan(left, right)
+
+
 class DesktopWidget(ResizableFramelessWindow):
     """
     The main file explorer widget, inheriting resizability and providing
@@ -291,10 +332,18 @@ class DesktopWidget(ResizableFramelessWindow):
         print(f"[MODEL DEBUG] Model root path set to: {self.model.rootPath()}")
         print(f"[MODEL DEBUG] TempDesk folder: {self.TempDesk_folder}")
         
-        self.view.setModel(self.model)
-        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+        # Create and setup the proxy model for time-based sorting
+        self.proxy_model = TimeSortProxyModel()
+        self.proxy_model.setSourceModel(self.model)
         
-        print(f"[MODEL DEBUG] Using basic model with files-only filter")
+        # Enable sorting
+        self.proxy_model.setDynamicSortFilter(True)
+        self.proxy_model.sort(0, Qt.SortOrder.DescendingOrder)
+        
+        self.view.setModel(self.proxy_model)
+        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.TempDesk_folder)))
+        
+        print(f"[MODEL DEBUG] Using time-sorted proxy model with files-only filter")
         
         # Setup file system watcher with enhanced monitoring
         self.watcher = QFileSystemWatcher([self.TempDesk_folder])
@@ -378,7 +427,7 @@ class DesktopWidget(ResizableFramelessWindow):
             # Force refresh the file system model
             self.model.setRootPath("")
             self.model.setRootPath(self.TempDesk_folder)
-            self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+            self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.TempDesk_folder)))
             
             # Apply filter to ensure new files are properly handled
             self.apply_file_filter()
@@ -394,7 +443,7 @@ class DesktopWidget(ResizableFramelessWindow):
         # Force refresh the file system model
         self.model.setRootPath("")
         self.model.setRootPath(self.TempDesk_folder)
-        self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+        self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.TempDesk_folder)))
         
         # Reapply the filter to make sure everything is correct
         self.apply_file_filter()
@@ -425,7 +474,7 @@ class DesktopWidget(ResizableFramelessWindow):
             # Force refresh the model to ensure all files are detected
             self.model.setRootPath("")
             self.model.setRootPath(self.TempDesk_folder)
-            self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+            self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.TempDesk_folder)))
             
             # Create a folder for old files (excluded from view)
             hidden_folder = os.path.join(self.TempDesk_folder, 'old')
@@ -575,9 +624,9 @@ class DesktopWidget(ResizableFramelessWindow):
             import os
             import time
             
-            # Get root index for counting
+            # Get root index for counting (use proxy model)
             root_index = self.view.rootIndex()
-            visible_count = self.model.rowCount(root_index)
+            visible_count = self.proxy_model.rowCount(root_index)
             
             print(f"📋 ACTUALLY VISIBLE IN VIEW: {visible_count} files")
             
@@ -587,23 +636,17 @@ class DesktopWidget(ResizableFramelessWindow):
                 current_time = time.time()
                 for row in range(visible_count):
                     try:
-                        item_index = self.model.index(row, 0, root_index)
-                        file_path = self.model.filePath(item_index)
+                        item_index = self.proxy_model.index(row, 0, root_index)
+                        # Map proxy index to source model index
+                        source_index = self.proxy_model.mapToSource(item_index)
+                        file_path = self.model.filePath(source_index)
                         file_name = os.path.basename(file_path)
                         
                         # Get file info for debugging
                         if os.path.exists(file_path):
                             ctime = os.path.getctime(file_path)
-                            atime = os.path.getatime(file_path)
-                            last_activity = max(ctime, atime)
-                            age = current_time - last_activity
-                            
-                            if ctime > atime:
-                                reason = "added"
-                            elif atime > ctime:
-                                reason = "accessed"
-                            else:
-                                reason = "added/accessed"
+                            age = current_time - ctime
+                            reason = "added"
                                 
                             print(f"   {row + 1}. {file_name} (age: {age:.1f}s, {reason})")
                         else:
@@ -615,20 +658,29 @@ class DesktopWidget(ResizableFramelessWindow):
         except Exception as e:
             print(f"[VIEW DEBUG] Error checking visible items: {e}")
             
-        # Also check what files are actually in the folder
+        # Also check what files and folders are actually in the folder
         try:
-            files_in_folder = [f for f in os.listdir(self.TempDesk_folder) 
-                             if not f.startswith('.') and f != 'old' and os.path.isfile(os.path.join(self.TempDesk_folder, f))]
-            print(f"📁 FILES ACTUALLY IN FOLDER: {len(files_in_folder)} files")
-            for file in files_in_folder:
-                print(f"     📄 {file}")
+            items_in_folder = [f for f in os.listdir(self.TempDesk_folder) 
+                             if not f.startswith('.') and f != 'old']
+            files_in_folder = [f for f in items_in_folder if os.path.isfile(os.path.join(self.TempDesk_folder, f))]
+            folders_in_folder = [f for f in items_in_folder if os.path.isdir(os.path.join(self.TempDesk_folder, f))]
+            
+            print(f"📁 ITEMS ACTUALLY IN FOLDER: {len(items_in_folder)} total ({len(files_in_folder)} files, {len(folders_in_folder)} folders)")
+            for item in items_in_folder:
+                item_path = os.path.join(self.TempDesk_folder, item)
+                if os.path.isfile(item_path):
+                    print(f"     📄 {item}")
+                elif os.path.isdir(item_path):
+                    print(f"     📁 {item}")
                 
         except Exception as e:
             print(f"[VIEW DEBUG] Error checking folder contents: {e}")
     
     def open_item(self, index):
         try: 
-            os.startfile(self.model.filePath(index))
+            # Map proxy index to source model index
+            source_index = self.proxy_model.mapToSource(index)
+            os.startfile(self.model.filePath(source_index))
         except Exception as e: QMessageBox.warning(self, "Error", f"Could not open item:\n{e}")
             
     def show_context_menu(self, position):
@@ -661,7 +713,9 @@ class DesktopWidget(ResizableFramelessWindow):
         menu.exec(self.view.viewport().mapToGlobal(position))
 
     def delete_items(self, indexes):
-        paths = [self.model.filePath(i) for i in indexes]
+        # Map proxy indexes to source model indexes
+        source_indexes = [self.proxy_model.mapToSource(i) for i in indexes]
+        paths = [self.model.filePath(i) for i in source_indexes]
         reply = QMessageBox.question(self, "Confirm Delete", f"Permanently delete {len(paths)} item(s)?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
@@ -833,7 +887,7 @@ class DesktopWidget(ResizableFramelessWindow):
                 
                 # Update the model to use the new folder
                 self.model.setRootPath(self.TempDesk_folder)
-                self.view.setRootIndex(self.model.index(self.TempDesk_folder))
+                self.view.setRootIndex(self.proxy_model.mapFromSource(self.model.index(self.TempDesk_folder)))
                 
                 # Update the file watcher
                 self.watcher.removePath(old_folder)
@@ -1100,7 +1154,9 @@ class DesktopWidget(ResizableFramelessWindow):
     def copy_items(self, indexes):
         """Copy items to clipboard."""
         try:
-            paths = [self.model.filePath(i) for i in indexes]
+            # Map proxy indexes to source model indexes
+            source_indexes = [self.proxy_model.mapToSource(i) for i in indexes]
+            paths = [self.model.filePath(i) for i in source_indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -1111,7 +1167,9 @@ class DesktopWidget(ResizableFramelessWindow):
     def cut_items(self, indexes):
         """Cut items to clipboard."""
         try:
-            paths = [self.model.filePath(i) for i in indexes]
+            # Map proxy indexes to source model indexes
+            source_indexes = [self.proxy_model.mapToSource(i) for i in indexes]
+            paths = [self.model.filePath(i) for i in source_indexes]
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
@@ -1225,7 +1283,9 @@ class DesktopWidget(ResizableFramelessWindow):
     def open_with_dialog(self, index):
         """Open file with default application dialog."""
         try:
-            file_path = self.model.filePath(index)
+            # Map proxy index to source model index
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             os.startfile(file_path)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not open file:\n{e}")
@@ -1233,7 +1293,9 @@ class DesktopWidget(ResizableFramelessWindow):
     def rename_item(self, index):
         """Rename the selected item."""
         try:
-            file_path = self.model.filePath(index)
+            # Map proxy index to source model index
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             filename = os.path.basename(file_path)
             new_name, ok = QInputDialog.getText(self, "Rename", "Enter new name:", text=filename)
             if ok and new_name and new_name != filename:
@@ -1248,7 +1310,9 @@ class DesktopWidget(ResizableFramelessWindow):
     def show_properties(self, index):
         """Show file properties dialog."""
         try:
-            file_path = self.model.filePath(index)
+            # Map proxy index to source model index
+            source_index = self.proxy_model.mapToSource(index)
+            file_path = self.model.filePath(source_index)
             
             # Use Windows shell to show properties dialog
             import ctypes
