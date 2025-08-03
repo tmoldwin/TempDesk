@@ -1,4 +1,4 @@
-# TempDesk - Desktop Widget
+# TempDesk Desktop Widget
 
 ## What is TempDesk?
 
