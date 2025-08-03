@@ -2,24 +2,27 @@
 
 ## What is TempDesk?
 
-TempDesk is a desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
+TempDesk is a Windows desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
 
-TempDesk gives you a transparent window on your desktop where you can store these temporary files. They automatically get deleted after a few days, keeping your desktop clean.
+TempDesk gives you a transparent window on your desktop where you can store these temporary files. They automatically get hidden from view after a configurable time period, keeping your desktop clean while preserving your files.
 
 ## Features
 
 - **Transparent Desktop Widget**: Semi-transparent window that stays on your desktop
 - **Drag & Drop Support**: Simply drag files into the widget to add them
-- **Cross-Platform**: Works on Windows, macOS, and Linux
-- **Auto-Cleanup**: Files automatically deleted after configurable days (default: 7 days)
+- **Windows-Only**: Currently optimized for Windows with native desktop integration
+- **Smart Filtering**: Files automatically hidden from view after configurable time (default: 1 day)
 - **File Icons**: Files display with appropriate icons based on type
 - **Context Menus**: Right-click files for open, delete, and properties
-- **Settings**: Configure auto-deletion time and storage location
-- **File Watcher**: Automatically detects files added to the temp folder
+- **Settings**: Configure filtering time and storage location
+- **File Watcher**: Automatically detects files added to the TempDesk folder
+- **System Tray**: Minimize to system tray and toggle visibility
+- **Resizable**: Drag edges to resize the widget
+- **Movable**: Drag the title bar to move the widget around
 
 ## Quick Start
 
-### Windows (Recommended)
+### Windows
 
 1. **Download and extract** the project
 2. **Double-click `run.bat`** to start TempDesk
@@ -33,11 +36,7 @@ TempDesk gives you a transparent window on your desktop where you can store thes
    ```bash
    pip install -r requirements.txt
    ```
-3. **Create icons**:
-   ```bash
-   python create_icons.py
-   ```
-4. **Run the application**:
+3. **Run the application**:
    ```bash
    python TempDesk.py
    ```
@@ -47,10 +46,6 @@ TempDesk gives you a transparent window on your desktop where you can store thes
 To create a standalone executable:
 
 ```bash
-# Windows
-build.bat
-
-# Or manually
 python build.py
 ```
 
@@ -61,9 +56,10 @@ The executable will be created in the `dist/` folder.
 ### The Widget
 - A semi-transparent window appears on your desktop
 - It stays behind other windows - only visible when you're on the desktop
-- You can drag it anywhere on your desktop
-- You can resize it to fit more or fewer files
+- You can drag it anywhere on your desktop using the title bar
+- You can resize it by dragging the edges
 - It doesn't appear in your taskbar or Alt-Tab list - it's just part of your desktop
+- System tray icon allows you to show/hide the widget
 
 ### Adding Files
 - **Drag and Drop**: Simply drag any file from your computer into the TempDesk window
@@ -80,17 +76,20 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 - **Open**: Double-click any file to open it with its default program
 - **Delete**: Right-click and select "Delete" or use the trash icon
 - **Properties**: Right-click to see file details
-- **Auto-Cleanup**: Files automatically disappear after the number of days you set (default: 7 days)
+- **Smart Filtering**: Files automatically hidden from view after the number of days you set (default: 1 day)
+- **Keyboard Shortcuts**: Ctrl+C (copy), Ctrl+X (cut), Ctrl+V (paste), Delete, F2 (rename)
 
 ### Widget Controls
-- **Move**: Drag anywhere on the window to move it around
+- **Move**: Drag the title bar to move it around
+- **Resize**: Drag the edges to resize the widget
 - **Close**: Click the X button to close the widget
-- **Settings**: Click the gear icon (⚙) to change auto-deletion time, storage folder, etc.
-- **Open Folder**: Click the folder icon (📁) to open the TempDesk storage folder directly
+- **Settings**: Click the gear icon (⚙) to change filtering time, storage folder, etc.
+- **System Tray**: Right-click the tray icon to show/hide or quit
 
 ### Settings
-- **Auto-deletion**: Set how many days before files are automatically deleted (1-30 days)
-- **Storage Location**: Choose where files are stored (default: your Documents folder)
+- **Filtering Time**: Set how many days before files are hidden from view (1 minute to 1 month)
+- **Auto-Delete**: Optional setting to permanently delete files after the time period
+- **Storage Location**: Files are stored in `C:\Users\YourName\TempDesk`
 
 ## User Experience Flow
 
@@ -98,17 +97,17 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 2. **Add Files**: Drag files into the window or save them to the TempDesk folder
 3. **See Files**: Files appear as desktop-style icons in the widget
 4. **Use Files**: Double-click to open, right-click for more options
-5. **Auto-Cleanup**: Files automatically disappear after your set time period
+5. **Smart Filtering**: Files automatically disappear from view after your set time period
 6. **Configure**: Use settings to adjust behavior to your preferences
 
 ## What Makes It Special
 
 - **Desktop Widget**: It's not a regular app - it's part of your desktop
 - **Visual**: Files look like desktop shortcuts, not a boring list
-- **Automatic**: Set it and forget it - files clean themselves up
+- **Smart**: Files are filtered/hidden rather than deleted, so you can recover them if needed
 - **Flexible**: Move it, resize it, configure it however you want
 - **Non-Intrusive**: Semi-transparent so it doesn't block your desktop
-- **Cross-Platform**: Works consistently across Windows, macOS, and Linux
+- **Windows-Native**: Uses Windows APIs for true desktop integration
 
 ## Common Use Cases
 
@@ -123,19 +122,19 @@ Files appear as desktop shortcuts/icons (not a boring file list):
 ### Technology Stack
 - **Python 3.7+**: Core language
 - **PyQt6**: Modern GUI framework with excellent drag-drop support
-- **watchdog**: File system monitoring
-- **Pillow**: Image processing for icons
-- **pywin32**: Windows-specific features (Windows only)
+- **pywin32**: Windows-specific features for desktop integration
+- **psutil**: System monitoring
 
-### Cross-Platform Support
-- **Windows**: Full native drag-drop support
-- **macOS**: Full support with file dialog fallback
-- **Linux**: Full support with file dialog fallback
+### Windows Integration
+- **Desktop Parenting**: Uses Windows APIs to attach to the desktop
+- **Native Drag-Drop**: Full Windows drag-drop support
+- **System Tray**: Native Windows system tray integration
+- **File Operations**: Native Windows file operations
 
 ### File Storage
-- **Windows**: `C:\Users\YourName\TempDesk`
-- **macOS**: `/Users/YourName/TempDesk`
-- **Linux**: `/home/YourName/TempDesk`
+- **Location**: `C:\Users\YourName\TempDesk`
+- **Hidden Files**: Old files are moved to `C:\Users\YourName\TempDesk\old` folder
+- **Configuration**: Settings stored in `C:\Users\YourName\.TempDesk_config.json`
 
 ## Getting Started
 
