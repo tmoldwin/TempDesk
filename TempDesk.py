@@ -36,7 +36,8 @@ class ResizableFramelessWindow(QMainWindow):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        # We remove the Tool and other hints that were causing layering issues.
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self.drag_position = None
@@ -159,7 +160,12 @@ class DesktopWidget(ResizableFramelessWindow):
         self.setup_ui()
         self.setup_window_properties()
         self.setup_file_system_model()
-        self.pin_to_desktop()
+        
+        # Try to pin, and if it fails, start the z-order timer as a fallback.
+        is_pinned = self.pin_to_desktop()
+        if not is_pinned:
+            print("Pinning failed. Using fallback z-order timer to force window to bottom.")
+            self.start_z_order_timer()
         
     def get_TempDesk_folder(self) -> str:
         # Check if custom folder is set in config
@@ -382,24 +388,22 @@ class DesktopWidget(ResizableFramelessWindow):
         # Apply initial filter after setup
         self.apply_file_filter()
     
-    def pin_to_desktop(self):
-        """Uses win32gui to set the parent of this window to the desktop."""
+    def pin_to_desktop(self) -> bool:
+        """
+        Uses win32gui to set the parent of this window to the desktop.
+        This is the proper way to pin. Returns True on success, False on failure.
+        """
         try:
-            # Find the Program Manager window
             progman = win32gui.FindWindow("Progman", None)
             if not progman:
                 print("Warning: Could not find Progman window")
-                return
+                return False
                 
-            # Send message to make desktop visible
             win32gui.SendMessage(progman, 0x052C, 0, 0)
             
-            # Find the WorkerW window that contains the desktop
             def enum_windows_callback(hwnd, windows):
                 if win32gui.IsWindowVisible(hwnd):
-                    class_name = win32gui.GetClassName(hwnd)
-                    if class_name == "WorkerW":
-                        # Check if this WorkerW has a child window
+                    if win32gui.GetClassName(hwnd) == "WorkerW":
                         child = win32gui.FindWindowEx(hwnd, None, "SHELLDLL_DefView", None)
                         if child:
                             windows.append(hwnd)
@@ -410,17 +414,32 @@ class DesktopWidget(ResizableFramelessWindow):
             
             if worker_windows:
                 desktop_workerw = worker_windows[0]
-                # Set the window to be a child of the desktop
                 window_handle = int(self.winId())
                 win32gui.SetParent(window_handle, desktop_workerw)
-                # Set window to be always on bottom
-                win32gui.SetWindowPos(window_handle, win32con.HWND_BOTTOM, 0, 0, 0, 0, 
-                                    win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
+                print("Successfully pinned to desktop.")
+                return True
             else:
-                print("Warning: Could not find desktop WorkerW window")
+                print("Warning: Could not find desktop WorkerW window.")
+                return False
         except Exception as e:
             print(f"Warning: Could not pin to desktop: {e}")
-            # Continue without pinning to desktop
+            return False
+
+    def start_z_order_timer(self):
+        """Starts a timer to periodically force the window to the bottom of the Z-order."""
+        self.z_order_timer = QTimer(self)
+        self.z_order_timer.timeout.connect(self.force_to_bottom)
+        self.z_order_timer.start(250)  # Force to bottom 4 times a second
+
+    def force_to_bottom(self):
+        """Uses SetWindowPos to force the window to the bottom of the Z-order."""
+        try:
+            window_handle = int(self.winId())
+            win32gui.SetWindowPos(window_handle, win32con.HWND_BOTTOM, 0, 0, 0, 0,
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
+        except Exception:
+            # If it fails once, it will likely fail forever. Stop the timer to avoid spamming logs.
+            self.z_order_timer.stop()
 
     def directory_changed(self):
         """Handle directory changes and ensure new files are properly filtered."""
