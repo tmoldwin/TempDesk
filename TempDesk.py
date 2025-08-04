@@ -152,6 +152,9 @@ class DesktopWidget(ResizableFramelessWindow):
         self.config = self.load_config()
         self.TempDesk_folder = self.get_TempDesk_folder()
         self.is_dragging = False
+        
+        # Initialize pin state (False = pinned to desktop, True = pinned above all apps)
+        self.is_pinned_above = self.config.get('is_pinned_above', False)
 
         os.makedirs(self.TempDesk_folder, exist_ok=True)
         
@@ -161,11 +164,8 @@ class DesktopWidget(ResizableFramelessWindow):
         self.setup_window_properties()
         self.setup_file_system_model()
         
-        # Try to pin, and if it fails, start the z-order timer as a fallback.
-        is_pinned = self.pin_to_desktop()
-        if not is_pinned:
-            print("Pinning failed. Using fallback z-order timer to force window to bottom.")
-            self.start_z_order_timer()
+        # Apply pinning based on current state
+        self.apply_pin_state()
         
     def get_TempDesk_folder(self) -> str:
         # Check if custom folder is set in config
@@ -226,7 +226,8 @@ class DesktopWidget(ResizableFramelessWindow):
             'window_geometry': self.saveGeometry().data().hex(),
             'filter_period': self.config.get('filter_period', 86400),
             'auto_delete': self.config.get('auto_delete', False),
-            'tempdesk_folder': self.config.get('tempdesk_folder', None)
+            'tempdesk_folder': self.config.get('tempdesk_folder', None),
+            'is_pinned_above': self.is_pinned_above
         }
         try:
             with open(config_path, 'w') as f: json.dump(config, f, indent=2)
@@ -298,6 +299,13 @@ class DesktopWidget(ResizableFramelessWindow):
         settings_btn.clicked.connect(self.show_settings_dialog)
         settings_btn.setStyleSheet("QPushButton { border: none; color: white; font-size: 16px; } QPushButton:hover { background-color: #555; }")
 
+        # Pin toggle button
+        self.pin_btn = QPushButton("📍")
+        self.pin_btn.setFixedSize(28, 28)
+        self.pin_btn.clicked.connect(self.toggle_pin_state)
+        self.pin_btn.setStyleSheet("QPushButton { border: none; color: white; font-size: 16px; } QPushButton:hover { background-color: #555; }")
+        self.update_pin_button_icon()
+
         minimize_btn = QPushButton("−")
         minimize_btn.setFixedSize(28, 28)
         minimize_btn.clicked.connect(self.minimize)
@@ -311,6 +319,7 @@ class DesktopWidget(ResizableFramelessWindow):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         title_layout.addWidget(settings_btn)
+        title_layout.addWidget(self.pin_btn)
         title_layout.addWidget(minimize_btn)
         title_layout.addWidget(close_btn)
         
@@ -334,8 +343,7 @@ class DesktopWidget(ResizableFramelessWindow):
             self.resize(500, 350)
             self.move(screen.width() - self.width() - 20, 40)
         
-        # Set window to stay on top of desktop but below other applications
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        # Don't set WindowStaysOnTopHint by default - let apply_pin_state handle it
     
     def setup_file_system_model(self):
         self.model = QFileSystemModel()
@@ -388,6 +396,61 @@ class DesktopWidget(ResizableFramelessWindow):
         # Apply initial filter after setup
         self.apply_file_filter()
     
+    def apply_pin_state(self):
+        """Apply the current pin state (above or below all apps)."""
+        if self.is_pinned_above:
+            # Pin above all apps - remove any desktop parenting first
+            try:
+                window_handle = int(self.winId())
+                win32gui.SetParent(window_handle, 0)  # Remove parenting
+            except:
+                pass
+            
+            # Set window flags for staying on top
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            self.show()  # Ensure window is visible
+            
+            # Stop the z-order timer if it's running
+            if hasattr(self, 'z_order_timer'):
+                self.z_order_timer.stop()
+            print("Pinned above all applications.")
+        else:
+            # Pin to desktop (below all apps)
+            # Remove WindowStaysOnTopHint flag
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            self.show()  # Ensure window is visible
+            
+            # Try to pin to desktop
+            is_pinned = self.pin_to_desktop()
+            if not is_pinned:
+                print("Pinning to desktop failed. Using fallback z-order timer to force window to bottom.")
+                self.start_z_order_timer()
+            else:
+                # Stop the z-order timer if it's running
+                if hasattr(self, 'z_order_timer'):
+                    self.z_order_timer.stop()
+                print("Successfully pinned to desktop.")
+
+    def toggle_pin_state(self):
+        """Toggle between pinned above all apps and pinned to desktop."""
+        self.is_pinned_above = not self.is_pinned_above
+        self.apply_pin_state()
+        self.save_config()
+        
+        # Update the pin button icon
+        if hasattr(self, 'pin_btn'):
+            self.update_pin_button_icon()
+
+    def update_pin_button_icon(self):
+        """Update the pin button icon based on current state."""
+        if hasattr(self, 'pin_btn'):
+            if self.is_pinned_above:
+                self.pin_btn.setText("📌")
+                self.pin_btn.setToolTip("Pinned above all apps - Click to pin to desktop")
+            else:
+                self.pin_btn.setText("📍")
+                self.pin_btn.setToolTip("Pinned to desktop - Click to pin above all apps")
+
     def pin_to_desktop(self) -> bool:
         """
         Uses win32gui to set the parent of this window to the desktop.
@@ -1448,6 +1511,26 @@ def main():
 
     tray_menu = QMenu()
     tray_menu.addAction("Show/Hide TempDesk", toggle_visibility)
+    tray_menu.addSeparator()
+    
+    # Pin toggle action
+    def toggle_pin():
+        widget.toggle_pin_state()
+    
+    pin_action = tray_menu.addAction("Pin Above All Apps" if not widget.is_pinned_above else "Pin to Desktop", toggle_pin)
+    
+    # Update pin action text when toggled
+    def update_pin_action_text():
+        pin_action.setText("Pin Above All Apps" if not widget.is_pinned_above else "Pin to Desktop")
+    
+    # Connect the toggle function to also update the menu text
+    def toggle_pin_with_update():
+        widget.toggle_pin_state()
+        update_pin_action_text()
+    
+    pin_action.triggered.disconnect()
+    pin_action.triggered.connect(toggle_pin_with_update)
+    
     tray_menu.addSeparator()
     tray_menu.addAction("Quit", app.quit)
     tray_icon.setContextMenu(tray_menu)
