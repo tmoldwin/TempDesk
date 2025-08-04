@@ -292,6 +292,11 @@ class DesktopWidget(ResizableFramelessWindow):
         settings_btn.clicked.connect(self.show_settings_dialog)
         settings_btn.setStyleSheet("QPushButton { border: none; color: white; font-size: 16px; } QPushButton:hover { background-color: #555; }")
 
+        minimize_btn = QPushButton("−")
+        minimize_btn.setFixedSize(28, 28)
+        minimize_btn.clicked.connect(self.minimize)
+        minimize_btn.setStyleSheet("QPushButton { border: none; color: white; font-size: 20px; } QPushButton:hover { background-color: #555; }")
+
         close_btn = QPushButton("×")
         close_btn.setFixedSize(28, 28)
         close_btn.clicked.connect(self.close)
@@ -300,9 +305,14 @@ class DesktopWidget(ResizableFramelessWindow):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         title_layout.addWidget(settings_btn)
+        title_layout.addWidget(minimize_btn)
         title_layout.addWidget(close_btn)
         
         return title_bar
+
+    def minimize(self):
+        """Minimize the window by hiding it."""
+        self.hide()
 
     def setup_window_properties(self):
         if 'window_geometry' in self.config and self.config['window_geometry'] is not None:
