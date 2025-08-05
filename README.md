@@ -1,5 +1,23 @@
 # TempDesk Desktop Widget
 
+## 🚀 **Transform Your Desktop Chaos into Organized Bliss**
+
+**Tired of your desktop becoming a permanent graveyard for temporary files?** 
+
+TempDesk is the smart desktop widget that automatically cleans up your clutter while keeping your files easily accessible. Simply drag files into the transparent widget on your desktop, and they'll automatically disappear from view after your chosen time period - keeping your desktop pristine without losing your files.
+
+**✨ Key Benefits:**
+- **Smart Auto-Cleanup**: Files automatically hide after 1 day (configurable)
+- **Desktop Integration**: Transparent widget that stays behind your apps
+- **Drag & Drop**: Simply drag any file into the widget
+- **Visual File Icons**: Files display with proper icons, not boring lists
+- **System Tray Control**: Minimize to tray, toggle visibility, pin above/below apps
+- **Zero Learning Curve**: Works exactly like your desktop, but smarter
+
+**Perfect for:** Downloads, screenshots, work-in-progress files, temporary media, and anything you need briefly but don't want cluttering your desktop forever.
+
+---
+
 ## What is TempDesk?
 
 TempDesk is a Windows desktop widget that solves a common problem: you have files you need temporarily but want easy access to, so you put them on your desktop. But then they stay there forever, creating clutter.
